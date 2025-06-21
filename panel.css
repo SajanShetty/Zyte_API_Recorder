@@ -1,0 +1,117 @@
+body, html {
+  margin: 0; padding: 0; width: 100%; height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px; background-color: #f0f2f5; color: #333;
+}
+.container { display: flex; flex-direction: column; height: 100vh; }
+.toolbar {
+  padding: 8px; background-color: #ffffff;
+  border-bottom: 1px solid #d1d5db; display: flex;
+  flex-wrap: wrap; gap: 8px; align-items: center;
+}
+button {
+  padding: 6px 12px; border: 1px solid #d1d5db; border-radius: 4px;
+  background-color: #ffffff; cursor: pointer; font-weight: 500;
+}
+button:hover { background-color: #f9fafb; }
+button:disabled { cursor: not-allowed; opacity: 0.5; }
+#start-btn { background-color: #28a745; color: white; border-color: #28a745; }
+#stop-btn { background-color: #dc3545; color: white; border-color: #dc3545; }
+
+.wait-timeout-container, .screenshot-container { display: flex; align-items: center; }
+.wait-timeout-container input {
+    width: 60px; margin-right: -1px; border-radius: 4px 0 0 4px;
+    padding: 5px; border: 1px solid #d1d5db; text-align: center;
+}
+.wait-timeout-container button { border-radius: 0 4px 4px 0; }
+.screenshot-container { margin-left: 8px; }
+.screenshot-container label { margin-left: 4px; user-select: none; }
+
+.main-content { display: flex; flex: 1; overflow: hidden; }
+.pane { padding: 16px; height: 100%; box-sizing: border-box; overflow-y: auto; }
+.left-pane { width: 50%; border-right: 1px solid #d1d5db; background-color: #ffffff; }
+.right-pane { width: 50%; background-color: #f9fafb; }
+
+.actions-header {
+  display: flex; justify-content: space-between; padding: 4px 8px;
+  font-weight: bold; font-size: 12px; color: #666;
+  border-bottom: 1px solid #d1d5db; margin-bottom: 4px;
+}
+.action-details-header { flex-grow: 1; }
+.action-edit-header { width: 60px; text-align: center; }
+.action-continue-header { width: 110px; text-align: center; }
+.action-delete-header { width: 50px; text-align: center; }
+
+#actions-list { padding-left: 20px; margin: 0; list-style: decimal; }
+#actions-list li {
+  padding: 8px; margin-bottom: 4px; background-color: #f0f2f5;
+  border-radius: 4px; cursor: grab; display: flex;
+  justify-content: space-between; align-items: center; position: relative;
+}
+#actions-list li:active { cursor: grabbing; }
+#actions-list li .action-details {
+  flex-grow: 1; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis;
+}
+#actions-list li .action-controls {
+  display: flex; align-items: center;
+  width: 220px; justify-content: space-between;
+}
+.control-container { text-align: center; }
+.action-edit-container { width: 60px; }
+.action-continue-container { width: 110px; }
+.action-delete-container { width: 50px; }
+
+.edit-btn, .delete-btn {
+    cursor: pointer; border: none; background: none; color: #999;
+    font-weight: bold; font-size: 1.4em; line-height: 1; padding: 0 5px;
+}
+.edit-btn:hover { color: #007bff; }
+.delete-btn:hover { color: #dc3545; }
+
+.selector-dropdown {
+    position: absolute;
+    background-color: white;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    z-index: 10;
+    width: calc(100% - 16px);
+    max-height: 150px;
+    overflow-y: auto;
+    margin-top: 4px;
+    animation: fadeIn 0.15s ease-in-out;
+}
+.selector-item {
+    padding: 8px 12px;
+    font-family: "SFMono-Regular", Consolas, monospace;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.selector-item:hover { background-color: #f0f2f5; }
+.selector-item.selected { font-weight: bold; color: #007bff; }
+.selector-item.custom-item { font-style: italic; color: #555; }
+
+.custom-selector-input-container { display: flex; gap: 4px; margin-top: 4px; }
+.custom-selector-input { flex-grow: 1; font-size: 12px; }
+
+pre {
+  white-space: pre-wrap; word-wrap: break-word; background-color: #ffffff;
+  padding: 12px; border-radius: 4px; border: 1px solid #d1d5db;
+  height: 80%; overflow-y: auto;
+}
+code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courier, monospace; }
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Zyte API Recorder",
+  "version": "1.0",
+  "description": "Records browser interactions and converts them into a Zyte API payload.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": [
+    "storage",
+    "webNavigation",
+    "activeTab",
+    "scripting"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "match_about_blank": true,
+      "all_frames": true
+    }
+  ],
+  "devtools_page": "devtools.html"
+}

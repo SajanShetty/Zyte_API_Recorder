@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="panel.css">
+</head>
+<body>
+  <div class="container">
+    <div class="toolbar">
+      <button id="start-btn" title="Start a new recording session">Start Recording</button>
+      <button id="stop-btn" title="Stop the current session" disabled>Stop Recording</button>
+      <button id="clear-btn" title="Clear all recorded actions">Clear</button>
+    </div>
+
+    <div class="toolbar manual-actions">
+        <button id="hover-btn" title="Pick an element to hover over">Add Hover</button>
+        <button id="hide-btn" title="Pick an element to hide">Add Hide</button>
+        <button id="scroll-to-btn" title="Record current scroll position">Add Scroll To</button>
+        <button id="wait-for-element-btn" title="Pick an element to wait for">Add Wait For Element</button>
+        <div class="wait-timeout-container">
+            <input type="number" id="wait-timeout-input" value="5" min="1" max="60" step="1" title="Timeout in seconds">
+            <button id="wait-timeout-btn" title="Add a wait for the specified duration">Add Wait</button>
+        </div>
+        <div class="screenshot-container">
+            <input type="checkbox" id="screenshot-checkbox" checked>
+            <label for="screenshot-checkbox">Screenshot</label>
+        </div>
+    </div>
+
+    <div class="main-content">
+      <div class="pane left-pane">
+        <h3>Recorded Actions</h3>
+        <div class="actions-header">
+            <span class="action-details-header">Action</span>
+            <span class="action-edit-header">Edit XPath</span>
+            <span class="action-continue-header">Continue on Error</span>
+            <span class="action-delete-header">Delete</span>
+        </div>
+        <ol id="actions-list"></ol>
+      </div>
+      <div class="pane right-pane">
+        <h3>Zyte API Payload</h3>
+        <pre><code id="payload-display">{ }</code></pre>
+        <button id="copy-payload-btn">Copy Payload</button>
+      </div>
+    </div>
+  </div>
+  <script src="panel.js"></script>
+</body>
+</html>
