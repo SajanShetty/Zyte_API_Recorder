@@ -333,6 +333,7 @@ function calculateSelectorScore(selector, element, context = {}) {
     if (context.isParentAnchored) score += 12;
     if (context.isChildAnchored) score += 10;
     if (selector.includes('@name') || selector.includes('@placeholder')) score += 8;
+    if (context.isClassBased) score += 15;
     
     // Negative scoring
     if (selector.includes('[1]') || selector.includes('[2]')) score -= 5;
