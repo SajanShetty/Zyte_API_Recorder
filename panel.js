@@ -38,19 +38,91 @@ document.addEventListener('DOMContentLoaded', () => {
             if (result.extensionSettings) {
                 settings = result.extensionSettings;
             } else {
-                // Use defaults
-                // In the loadSettings() function, update the else clause:
+                // Use defaults - SYNCED WITH content.js ENHANCED_DEFAULT_SETTINGS
                 settings = {
-                    classBlacklist: ['_*', 'css-*', 'jss*', 'makeStyles-*', 'MuiButton-root-*'],
-                    classWhitelist: ['btn*', 'button*', 'primary', 'secondary', 'submit', 'cancel', 'nav*', 'menu*', 'form*', 'input*'],
+                    classBlacklist: [
+                        // Original patterns
+                        '_*', 'css-*', 'jss*', 'makeStyles-*', 'MuiButton-root-*',
+                        
+                        // Enhanced CSS-in-JS patterns
+                        'sc-*',           // styled-components
+                        'emotion-*',      // emotion
+                        'jsx-*',          // styled-jsx
+                        
+                        // Framework-specific patterns
+                        'vue-*',          // Vue.js
+                        'ng-*',           // Angular
+                        'svelte-*',       // Svelte
+                        
+                        // Build tool patterns
+                        'webpack-*',      // Webpack
+                        'vite-*',         // Vite
+                        
+                        // Dynamic/generated patterns
+                        '*-[0-9]*-[0-9]*', // Multi-digit patterns
+                        '*[0-9][0-9][0-9]*', // 3+ consecutive digits
+                        '*-hash-*',       // Hash indicators
+                        '*-generated-*',  // Generated indicators
+                        
+                        // Utility class patterns (often dynamic)
+                        'p-[0-9]*',       // Tailwind spacing
+                        'm-[0-9]*',       // Tailwind margins
+                        'w-[0-9]*',       // Tailwind widths
+                        'h-[0-9]*',       // Tailwind heights
+                        
+                        // NEW: Angular dynamic state classes
+                        'ng-untouched', 'ng-touched', 'ng-pristine', 'ng-dirty', 
+                        'ng-valid', 'ng-invalid', 'ng-pending', 'ng-submitted',
+                        'ng-star-inserted', 'ng-trigger', 'ng-trigger-*',
+                        
+                        // Bootstrap dynamic classes
+                        'active', 'disabled', 'selected', 'checked', 'expanded', 
+                        'collapsed', 'open', 'closed', 'show', 'hide', 'hidden',
+                        
+                        // Common dynamic state classes
+                        'loading', 'error', 'success', 'warning', 'focus', 'hover',
+                        'visited', 'current', 'highlighted', 'selected'
+                    ],
+                    classWhitelist: [
+                        // Original patterns
+                        'btn*', 'button*', 'primary', 'secondary', 'submit', 'cancel',
+                        'nav*', 'menu*', 'form*', 'input*',
+                        
+                        // Enhanced semantic UI patterns
+                        'header*', 'footer*', 'sidebar*', 'content*', 'main*',
+                        'card*', 'modal*', 'dialog*', 'popup*', 'tooltip*',
+                        'dropdown*', 'select*', 'checkbox*', 'radio*',
+                        'tab*', 'accordion*', 'collapse*', 'panel*',
+                        'alert*', 'notice*', 'message*', 'notification*',
+                        'badge*', 'tag*', 'label*', 'chip*',
+                        'table*', 'row*', 'cell*', 'column*',
+                        'list*', 'item*', 'link*', 'text*',
+                        'icon*', 'image*', 'avatar*', 'logo*',
+                        'search*', 'filter*', 'sort*', 'pagination*',
+                        
+                        // State classes
+                        'active', 'disabled', 'selected', 'checked', 'expanded',
+                        'collapsed', 'open', 'closed', 'visible', 'hidden',
+                        
+                        // Size/variant classes
+                        'small', 'medium', 'large', 'xl', 'xs',
+                        'compact', 'full', 'mini', 'tiny',
+                        
+                        // Color/theme classes (common semantic ones)
+                        'success', 'error', 'warning', 'info',
+                        'dark', 'light', 'theme*',
+                        
+                        // Component library classes (stable ones)
+                        'hydrated', 'form-control', 'form-group', 'input-group*'
+                    ],
                     scrollDelay: 1000,
                     replayDelay: 500,
                     navigationTimeout: 10000,
                     highlightElements: true,
                     hoverDuration: 1000,
-                    enableElementState: true,  // NEW: Add this line
-
-                    // NEW DEFAULTS - Add these
+                    enableElementState: true,
+                    
+                    // Enhanced settings
                     enableEnhancedSelectors: true,
                     debugMode: false,
                     maxAlternatives: 20,
@@ -65,6 +137,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
                 chrome.storage.local.set({ extensionSettings: settings });
             }
+
         });
     }
 
@@ -142,12 +215,20 @@ document.addEventListener('DOMContentLoaded', () => {
                         <h4>Selector Generation</h4>
                         <div class="settings-group">
                             <label>Class Name Blacklist (glob patterns):</label>
-                            <textarea id="class-blacklist" rows="3">${settings.classBlacklist.join('\\n')}</textarea>
+                            <textarea id="class-blacklist" rows="8">${settings.classBlacklist.join('\n')}</textarea>
+                            <div style="font-size: 12px; color: #666; margin-top: 4px;">
+                                <strong>Examples:</strong> _* (underscore prefix), css-* (css prefix), *-[0-9]* (contains numbers), ng-* (Angular classes)
+                            </div>
                         </div>
+
                         <div class="settings-group">
                             <label>Class Name Whitelist (glob patterns):</label>
-                            <textarea id="class-whitelist" rows="3">${settings.classWhitelist.join('\\n')}</textarea>
+                            <textarea id="class-whitelist" rows="8">${settings.classWhitelist.join('\n')}</textarea>
+                            <div style="font-size: 12px; color: #666; margin-top: 4px;">
+                                <strong>Examples:</strong> btn* (button variants), nav* (navigation), form* (form elements), primary, secondary
+                            </div>
                         </div>
+
                         <button class="revert-patterns-btn">Revert to Defaults</button>
                     </div>
                     
@@ -326,12 +407,41 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         overlay.querySelector('.revert-patterns-btn').addEventListener('click', () => {
+            // REPLACE the existing arrays with the comprehensive ones:
             const defaultBlacklist = [
+                // Original patterns
                 '_*', 'css-*', 'jss*', 'makeStyles-*', 'MuiButton-root-*',
-                'sc-*', 'emotion-*', 'jsx-*', 'vue-*', 'ng-*', 'svelte-*',
-                'webpack-*', 'vite-*', '*-[0-9]*-[0-9]*', '*[0-9][0-9][0-9]*',
-                '*-hash-*', '*-generated-*', 'p-[0-9]*', 'm-[0-9]*', 'w-[0-9]*', 'h-[0-9]*'
+                
+                // Enhanced CSS-in-JS patterns
+                'sc-*', 'emotion-*', 'jsx-*',
+                
+                // Framework-specific patterns
+                'vue-*', 'ng-*', 'svelte-*',
+                
+                // Build tool patterns
+                'webpack-*', 'vite-*',
+                
+                // Dynamic/generated patterns
+                '*-[0-9]*-[0-9]*', '*[0-9][0-9][0-9]*',
+                '*-hash-*', '*-generated-*',
+                
+                // Utility class patterns
+                'p-[0-9]*', 'm-[0-9]*', 'w-[0-9]*', 'h-[0-9]*',
+                
+                // Angular dynamic state classes
+                'ng-untouched', 'ng-touched', 'ng-pristine', 'ng-dirty', 
+                'ng-valid', 'ng-invalid', 'ng-pending', 'ng-submitted',
+                'ng-star-inserted', 'ng-trigger', 'ng-trigger-*',
+                
+                // Bootstrap dynamic classes
+                'active', 'disabled', 'selected', 'checked', 'expanded', 
+                'collapsed', 'open', 'closed', 'show', 'hide', 'hidden',
+                
+                // Common dynamic state classes
+                'loading', 'error', 'success', 'warning', 'focus', 'hover',
+                'visited', 'current', 'highlighted', 'selected'
             ];
+            
             const defaultWhitelist = [
                 'btn*', 'button*', 'primary', 'secondary', 'submit', 'cancel',
                 'nav*', 'menu*', 'form*', 'input*', 'header*', 'footer*', 'sidebar*',
@@ -340,15 +450,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 'collapse*', 'panel*', 'alert*', 'notice*', 'message*', 'notification*',
                 'badge*', 'tag*', 'label*', 'chip*', 'table*', 'row*', 'cell*', 'column*',
                 'list*', 'item*', 'link*', 'text*', 'icon*', 'image*', 'avatar*', 'logo*',
-                'search*', 'filter*', 'sort*', 'pagination*', 'active', 'disabled',
-                'selected', 'checked', 'expanded', 'collapsed', 'open', 'closed',
-                'visible', 'hidden', 'small', 'medium', 'large', 'xl', 'xs',
+                'search*', 'filter*', 'sort*', 'pagination*',
+                'small', 'medium', 'large', 'xl', 'xs',
                 'compact', 'full', 'mini', 'tiny', 'success', 'error', 'warning',
-                'info', 'dark', 'light', 'theme*'
+                'info', 'dark', 'light', 'theme*', 'hydrated', 'form-control', 'form-group', 'input-group*'
             ];
-            overlay.querySelector('#class-blacklist').value = defaultBlacklist.join('\\n');
-            overlay.querySelector('#class-whitelist').value = defaultWhitelist.join('\\n');
+            
+            overlay.querySelector('#class-blacklist').value = defaultBlacklist.join('\n');
+            overlay.querySelector('#class-whitelist').value = defaultWhitelist.join('\n');
         });
+
 
         // Number control event listeners
         overlay.querySelectorAll('.increment-btn').forEach(btn => {
@@ -1504,6 +1615,41 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
             renderUI();
         });
         editorControls.appendChild(closeBtn);
+
+        // ===== ADD THIS DEBUG BUTTON CODE HERE =====
+        const debugBtn = document.createElement('button');
+        debugBtn.textContent = '🔍 Debug Storage';
+        debugBtn.style.marginLeft = '8px';
+        debugBtn.addEventListener('click', () => {
+            console.log('=== STORAGE DEBUG ===');
+            
+            // Check current settings
+            console.log('Panel settings object:', settings);
+            
+            // Check storage
+            chrome.storage.local.get(null, (result) => {
+                console.log('📦 ALL STORAGE:', result);
+                console.log('📦 STORAGE KEYS:', Object.keys(result));
+                
+                if (result.extensionSettings) {
+                    console.log('✅ extensionSettings found:', result.extensionSettings);
+                    console.log('📋 Blacklist length:', result.extensionSettings.classBlacklist?.length);
+                    console.log('📋 Blacklist content:', result.extensionSettings.classBlacklist);
+                } else {
+                    console.log('❌ extensionSettings NOT found');
+                }
+            });
+            
+            // Test write
+            chrome.storage.local.set({debugTest: Date.now()}, () => {
+                console.log('✅ Test write successful');
+                chrome.storage.local.get(['debugTest'], (result) => {
+                    console.log('✅ Test read result:', result.debugTest);
+                });
+            });
+        });
+
+
         
         editorHeader.appendChild(editorControls);
         editor.appendChild(editorHeader);
@@ -1527,50 +1673,116 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
         // Safety check for alternatives array
         const alternatives = action.selector.alternatives || [action.selector.current || ''];
         
-        alternatives.forEach(alt => {
-            if (!alt) return; // Skip empty alternatives
+        // NEW: State for show/hide additional alternatives
+        let showingAllAlternatives = false;
+        const maxInitialDisplay = 5;
+        const maxTotalDisplay = 20;
+        
+        // Function to render alternatives
+        function renderAlternatives() {
+            alternativesList.innerHTML = ''; // Clear existing
             
-            const optionDiv = document.createElement('div');
-            optionDiv.className = 'xpath-option';
-            if (alt === action.selector.current) {
-                optionDiv.classList.add('selected');
+            const displayCount = showingAllAlternatives 
+                ? Math.min(maxTotalDisplay, alternatives.length)
+                : Math.min(maxInitialDisplay, alternatives.length);
+            
+            const alternativesToShow = alternatives.slice(0, displayCount);
+            
+            alternativesToShow.forEach((alt, index) => {
+                if (!alt) return; // Skip empty alternatives
+                
+                const optionDiv = document.createElement('div');
+                optionDiv.className = 'xpath-option';
+                if (alt === action.selector.current) {
+                    optionDiv.classList.add('selected');
+                }
+                
+                // Add visual distinction for additional alternatives (beyond top 5)
+                if (index >= maxInitialDisplay) {
+                    optionDiv.style.backgroundColor = '#f8f9fa';
+                }
+                
+                const optionContent = document.createElement('div');
+                optionContent.className = 'xpath-option-content';
+                
+                const xpathText = document.createElement('div');
+                xpathText.className = 'xpath-text';
+                xpathText.textContent = alt;
+                xpathText.addEventListener('click', () => {
+                    // Remove selected class from all options
+                    alternativesList.querySelectorAll('.xpath-option').forEach(opt => opt.classList.remove('selected'));
+                    // Add selected class to clicked option
+                    optionDiv.classList.add('selected');
+                    // Update the action
+                    action.selector.current = alt;
+                    renderUI();
+                });
+                optionContent.appendChild(xpathText);
+                
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'xpath-actions';
+                
+                const testBtn = document.createElement('button');
+                testBtn.className = 'test-btn';
+                testBtn.textContent = 'Test';
+                
+                const resultSpan = document.createElement('span');
+                resultSpan.className = 'validation-result';
+                
+                testBtn.addEventListener('click', () => {
+                    testSelector(alt, 'xpath', resultSpan);
+                });
+                
+                actionsDiv.appendChild(testBtn);
+                actionsDiv.appendChild(resultSpan);
+                optionContent.appendChild(actionsDiv);
+                
+                optionDiv.appendChild(optionContent);
+                alternativesList.appendChild(optionDiv);
+            });
+        }
+        
+        // Initial render of alternatives
+        renderAlternatives();
+        alternativesSection.appendChild(alternativesList);
+        
+        // NEW: Show All Alternatives button (only if there are more than maxInitialDisplay)
+        if (alternatives.length > maxInitialDisplay) {
+            const showAllBtn = document.createElement('button');
+            showAllBtn.className = 'show-all-alternatives-btn';
+            
+            function updateShowAllButton() {
+                if (showingAllAlternatives) {
+                    showAllBtn.innerHTML = '📋 Show Less';
+                    showAllBtn.title = `Show only top ${maxInitialDisplay} alternatives`;
+                } else {
+                    const additionalCount = Math.min(maxTotalDisplay, alternatives.length) - maxInitialDisplay;
+                    showAllBtn.innerHTML = `📋 Show All Alternatives (+${additionalCount} more)`;
+                    showAllBtn.title = `Show ${additionalCount} additional alternatives`;
+                }
             }
             
-            const optionContent = document.createElement('div');
-            optionContent.className = 'xpath-option-content';
+            updateShowAllButton();
             
-            const xpathText = document.createElement('div');
-            xpathText.className = 'xpath-text';
-            xpathText.textContent = alt;
-            xpathText.addEventListener('click', () => {
-                action.selector.current = alt;
-                renderUI();
-            });
-            optionContent.appendChild(xpathText);
-            
-            const actionsDiv = document.createElement('div');
-            actionsDiv.className = 'xpath-actions';
-            
-            const testBtn = document.createElement('button');
-            testBtn.className = 'test-btn';
-            testBtn.textContent = 'Test';
-            
-            const resultSpan = document.createElement('span');
-            resultSpan.className = 'validation-result';
-            
-            testBtn.addEventListener('click', () => {
-                testSelector(alt, 'xpath', resultSpan);
+            showAllBtn.addEventListener('click', () => {
+                showingAllAlternatives = !showingAllAlternatives;
+                renderAlternatives();
+                updateShowAllButton();
+                
+                // Scroll the additional alternatives into view when expanding
+                if (showingAllAlternatives) {
+                    setTimeout(() => {
+                        const additionalAlternatives = alternativesList.children[maxInitialDisplay];
+                        if (additionalAlternatives) {
+                            additionalAlternatives.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                        }
+                    }, 100);
+                }
             });
             
-            actionsDiv.appendChild(testBtn);
-            actionsDiv.appendChild(resultSpan);
-            optionContent.appendChild(actionsDiv);
-            
-            optionDiv.appendChild(optionContent);
-            alternativesList.appendChild(optionDiv);
-        });
+            alternativesSection.appendChild(showAllBtn);
+        }
         
-        alternativesSection.appendChild(alternativesList);
         editorContent.appendChild(alternativesSection);
         
         // Custom Selector Section
@@ -1785,7 +1997,6 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
 
             editorContent.appendChild(stateSection);
         }
-        // ===== END OF ELEMENT STATE SECTION =====
         
         editor.appendChild(editorContent);
         container.appendChild(editor);

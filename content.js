@@ -128,12 +128,21 @@ let eventListeners = [];
 // Listen for settings updates
 chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace === 'local' && changes.extensionSettings) {
-        settings = { ...ENHANCED_DEFAULT_SETTINGS, ...changes.extensionSettings.newValue };
-        debugMode = settings.debugMode || false;
+        // DON'T merge blacklist/whitelist - use exact values from storage
+        const newSettings = { ...ENHANCED_DEFAULT_SETTINGS, ...changes.extensionSettings.newValue };
         
-        if (debugMode) {
-            console.log('Settings updated:', settings);
+        // Explicitly preserve empty arrays
+        if (changes.extensionSettings.newValue.classBlacklist !== undefined) {
+            newSettings.classBlacklist = changes.extensionSettings.newValue.classBlacklist;
         }
+        if (changes.extensionSettings.newValue.classWhitelist !== undefined) {
+            newSettings.classWhitelist = changes.extensionSettings.newValue.classWhitelist;
+        }
+        
+        settings = newSettings;
+        debugMode = settings.debugMode || false;        
+        console.log('🔧 Settings updated in content script:', settings);
+        console.log('📋 New blacklist:', settings.classBlacklist);
     }
 });
 

@@ -901,3 +901,63 @@ code { font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, Courie
     font-size: 12px;
     margin-top: 8px;
 }
+
+
+/* Show All Alternatives Button */
+.show-all-alternatives-btn {
+    background: #6f42c1;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.2s ease;
+    width: 100%;
+    justify-content: center;
+    margin-bottom: 12px;
+    font-size: 14px;
+}
+
+.show-all-alternatives-btn:hover {
+    background: #5a32a3;
+}
+
+.show-all-alternatives-btn:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+}
+
+/* Additional alternatives section */
+.additional-alternatives-section {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #e9ecef;
+}
+
+.additional-alternatives-title {
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: #6f42c1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+}
+
+.additional-alternatives-list .xpath-option {
+    background: #f8f9fa;
+    border-color: #e9ecef;
+}
+
+.additional-alternatives-list .xpath-option:hover {
+    border-color: #6f42c1;
+    background: #f3f0ff;
+}
+
+.additional-alternatives-list .xpath-option.selected {
+    border-color: #6f42c1;
+    background: #e8e3ff;
+}
