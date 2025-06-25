@@ -2,57 +2,105 @@
 <html>
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="panel.css">
 </head>
 <body>
   <div class="container">
+    <!-- Modern Toolbar -->
     <div class="toolbar">
-      <button id="start-btn" title="Start a new recording session">Start Recording</button>
-      <button id="stop-btn" title="Stop the current session" disabled>Stop Recording</button>
-      <button id="clear-btn" title="Clear all recorded actions">Clear</button>
-      <button id="settings-btn" title="Open settings panel">⚙️</button>
-    </div>
-
-    <div class="toolbar manual-actions">
-        <button id="hover-btn" title="Pick an element to hover over">Add Hover</button>
-        <button id="hide-btn" title="Pick an element to hide">Add Hide</button>
-        <button id="scroll-to-btn" title="Record current scroll position">Add Scroll To</button>
-        <button id="wait-for-element-btn" title="Pick an element to wait for">Add Wait For Element</button>
-        <div class="wait-timeout-container">
-            <input type="number" id="wait-timeout-input" value="5" min="1" max="60" step="1" title="Timeout in seconds">
-            <button id="wait-timeout-btn" title="Add a wait for the specified duration">Add Wait</button>
-        </div>
-        <div class="screenshot-container">
-            <input type="checkbox" id="screenshot-checkbox" checked>
-            <label for="screenshot-checkbox">Screenshot</label>
-        </div>
-        <div class="iframe-container">
-            <input type="checkbox" id="include-iframes-checkbox">
-            <label for="include-iframes-checkbox" title="Include iframes in payload">Include Iframes</label>
-        </div>
-    </div>
-
-    <div class="main-content">
-      <div class="pane left-pane">
-        <h3>Recorded Actions</h3>
-        <div class="actions-header">
-            <span class="action-drag-header"></span>
-            <span class="action-details-header">Action</span>
-            <span class="action-edit-header">Edit</span>
-            <span class="action-continue-header">Continue on Error</span>
-            <span class="action-delete-header">Delete</span>
-        </div>
-        <ol id="actions-list"></ol>
+      <div class="toolbar-group primary-controls">
+        <button id="start-btn" class="btn btn-success" title="Start a new recording session">
+          <span class="btn-icon">▶</span>
+          Start Recording
+        </button>
+        <button id="stop-btn" class="btn btn-danger" title="Stop the current session" disabled>
+          <span class="btn-icon">⏹</span>
+          Stop Recording
+        </button>
+        <button id="clear-btn" class="btn btn-secondary" title="Clear all recorded actions">
+          <span class="btn-icon">🗑</span>
+          Clear
+        </button>
+        <button id="settings-btn" class="btn btn-icon-only" title="Open settings panel">
+          <span class="btn-icon">⚙</span>
+        </button>
       </div>
-      <div class="pane right-pane">
-        <div class="payload-header">
-          <h3>Zyte API Payload</h3>
-          <div class="payload-controls">
-            <button id="copy-payload-btn">Copy Payload</button>
-            <button id="replay-btn">Replay</button>
+
+      <div class="toolbar-group secondary-controls">
+        <button id="hover-btn" class="btn btn-outline" title="Pick an element to hover over">Add Hover</button>
+        <button id="hide-btn" class="btn btn-outline" title="Pick an element to hide">Add Hide</button>
+        <button id="scroll-to-btn" class="btn btn-outline" title="Record current scroll position">Add Scroll To</button>
+        <button id="wait-for-element-btn" class="btn btn-outline" title="Pick an element to wait for">Add Wait For Element</button>
+        
+        <div class="control-group">
+          <input type="number" id="wait-timeout-input" class="input-inline" value="5" min="1" max="60" step="1" title="Timeout in seconds">
+          <button id="wait-timeout-btn" class="btn btn-outline" title="Add a wait for the specified duration">Add Wait</button>
+        </div>
+        
+        <div class="checkbox-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="screenshot-checkbox" checked>
+            <span class="checkmark"></span>
+            Screenshot
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="include-iframes-checkbox">
+            <span class="checkmark"></span>
+            Include Iframes
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="main-content">
+      <!-- Actions Panel -->
+      <div class="panel actions-panel">
+        <div class="panel-header">
+          <h3 class="panel-title">Recorded Actions</h3>
+        </div>
+        
+        <div class="panel-content">
+          <!-- Actions Header -->
+          <div class="actions-header">
+            <div class="col-drag"></div>
+            <div class="col-action">Action</div>
+            <div class="col-edit">Edit</div>
+            <div class="col-continue">Continue on Error</div>
+            <div class="col-delete">Delete</div>
+          </div>
+          
+          <!-- Actions List -->
+          <div class="actions-list-container">
+            <ol id="actions-list" class="actions-list"></ol>
           </div>
         </div>
-        <pre><code id="payload-display">{ }</code></pre>
+      </div>
+
+      <!-- Payload Panel -->
+      <div class="panel payload-panel">
+        <div class="panel-header">
+          <h3 class="panel-title">Zyte API Payload</h3>
+          <div class="panel-controls">
+            <button id="replay-btn" class="btn btn-primary">
+              <span class="btn-icon">▶</span>
+              Replay
+            </button>
+          </div>
+        </div>
+        
+        <div class="panel-content">
+          <div class="payload-display-container">
+            <pre class="payload-display"><code id="payload-display">{ }</code></pre>
+          </div>
+          <div class="payload-controls">
+            <button id="copy-payload-btn" class="btn btn-primary">
+              <span class="btn-icon">📋</span>
+              Copy Payload
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>

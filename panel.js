@@ -32,25 +32,110 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     let settings = {};
 
+    // Auto-scroll configuration
+    const AUTO_SCROLL_CONFIG = {
+        ZONE_HEIGHT: 50,           // Height of scroll zone in pixels
+        SCROLL_SPEED: 5,           // Pixels to scroll per interval
+        SCROLL_INTERVAL: 16,       // Milliseconds between scroll steps (60fps)
+        MAX_SCROLL_SPEED: 15       // Maximum scroll speed
+    };
+
+    let autoScrollInterval = null;
+    let currentScrollDirection = null;
+
+
+
     // --- Load Settings ---
     function loadSettings() {
         chrome.storage.local.get(['extensionSettings'], (result) => {
             if (result.extensionSettings) {
                 settings = result.extensionSettings;
             } else {
-                // Use defaults
-                // In the loadSettings() function, update the else clause:
+                // Use defaults - SYNCED WITH content.js ENHANCED_DEFAULT_SETTINGS
                 settings = {
-                    classBlacklist: ['_*', 'css-*', 'jss*', 'makeStyles-*', 'MuiButton-root-*'],
-                    classWhitelist: ['btn*', 'button*', 'primary', 'secondary', 'submit', 'cancel', 'nav*', 'menu*', 'form*', 'input*'],
+                    classBlacklist: [
+                        // Original patterns
+                        '_*', 'css-*', 'jss*', 'makeStyles-*', 'MuiButton-root-*',
+                        
+                        // Enhanced CSS-in-JS patterns
+                        'sc-*',           // styled-components
+                        'emotion-*',      // emotion
+                        'jsx-*',          // styled-jsx
+                        
+                        // Framework-specific patterns
+                        'vue-*',          // Vue.js
+                        'ng-*',           // Angular
+                        'svelte-*',       // Svelte
+                        
+                        // Build tool patterns
+                        'webpack-*',      // Webpack
+                        'vite-*',         // Vite
+                        
+                        // Dynamic/generated patterns
+                        '*-[0-9]*-[0-9]*', // Multi-digit patterns
+                        '*[0-9][0-9][0-9]*', // 3+ consecutive digits
+                        '*-hash-*',       // Hash indicators
+                        '*-generated-*',  // Generated indicators
+                        
+                        // Utility class patterns (often dynamic)
+                        'p-[0-9]*',       // Tailwind spacing
+                        'm-[0-9]*',       // Tailwind margins
+                        'w-[0-9]*',       // Tailwind widths
+                        'h-[0-9]*',       // Tailwind heights
+                        
+                        // NEW: Angular dynamic state classes
+                        'ng-untouched', 'ng-touched', 'ng-pristine', 'ng-dirty', 
+                        'ng-valid', 'ng-invalid', 'ng-pending', 'ng-submitted',
+                        'ng-star-inserted', 'ng-trigger', 'ng-trigger-*',
+                        
+                        // Bootstrap dynamic classes
+                        'active', 'disabled', 'selected', 'checked', 'expanded', 
+                        'collapsed', 'open', 'closed', 'show', 'hide', 'hidden',
+                        
+                        // Common dynamic state classes
+                        'loading', 'error', 'success', 'warning', 'focus', 'hover',
+                        'visited', 'current', 'highlighted', 'selected'
+                    ],
+                    classWhitelist: [
+                        // Original patterns
+                        'btn*', 'button*', 'primary', 'secondary', 'submit', 'cancel',
+                        'nav*', 'menu*', 'form*', 'input*',
+                        
+                        // Enhanced semantic UI patterns
+                        'header*', 'footer*', 'sidebar*', 'content*', 'main*',
+                        'card*', 'modal*', 'dialog*', 'popup*', 'tooltip*',
+                        'dropdown*', 'select*', 'checkbox*', 'radio*',
+                        'tab*', 'accordion*', 'collapse*', 'panel*',
+                        'alert*', 'notice*', 'message*', 'notification*',
+                        'badge*', 'tag*', 'label*', 'chip*',
+                        'table*', 'row*', 'cell*', 'column*',
+                        'list*', 'item*', 'link*', 'text*',
+                        'icon*', 'image*', 'avatar*', 'logo*',
+                        'search*', 'filter*', 'sort*', 'pagination*',
+                        
+                        // State classes
+                        'active', 'disabled', 'selected', 'checked', 'expanded',
+                        'collapsed', 'open', 'closed', 'visible', 'hidden',
+                        
+                        // Size/variant classes
+                        'small', 'medium', 'large', 'xl', 'xs',
+                        'compact', 'full', 'mini', 'tiny',
+                        
+                        // Color/theme classes (common semantic ones)
+                        'success', 'error', 'warning', 'info',
+                        'dark', 'light', 'theme*',
+                        
+                        // Component library classes (stable ones)
+                        'hydrated', 'form-control', 'form-group', 'input-group*'
+                    ],
                     scrollDelay: 1000,
                     replayDelay: 500,
                     navigationTimeout: 10000,
                     highlightElements: true,
                     hoverDuration: 1000,
-                    enableElementState: true,  // NEW: Add this line
-
-                    // NEW DEFAULTS - Add these
+                    enableElementState: true,
+                    
+                    // Enhanced settings
                     enableEnhancedSelectors: true,
                     debugMode: false,
                     maxAlternatives: 20,
@@ -65,6 +150,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 };
                 chrome.storage.local.set({ extensionSettings: settings });
             }
+
         });
     }
 
@@ -142,12 +228,20 @@ document.addEventListener('DOMContentLoaded', () => {
                         <h4>Selector Generation</h4>
                         <div class="settings-group">
                             <label>Class Name Blacklist (glob patterns):</label>
-                            <textarea id="class-blacklist" rows="3">${settings.classBlacklist.join('\\n')}</textarea>
+                            <textarea id="class-blacklist" rows="8">${settings.classBlacklist.join('\n')}</textarea>
+                            <div style="font-size: 12px; color: #666; margin-top: 4px;">
+                                <strong>Examples:</strong> _* (underscore prefix), css-* (css prefix), *-[0-9]* (contains numbers), ng-* (Angular classes)
+                            </div>
                         </div>
+
                         <div class="settings-group">
                             <label>Class Name Whitelist (glob patterns):</label>
-                            <textarea id="class-whitelist" rows="3">${settings.classWhitelist.join('\\n')}</textarea>
+                            <textarea id="class-whitelist" rows="8">${settings.classWhitelist.join('\n')}</textarea>
+                            <div style="font-size: 12px; color: #666; margin-top: 4px;">
+                                <strong>Examples:</strong> btn* (button variants), nav* (navigation), form* (form elements), primary, secondary
+                            </div>
                         </div>
+
                         <button class="revert-patterns-btn">Revert to Defaults</button>
                     </div>
                     
@@ -326,12 +420,41 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         overlay.querySelector('.revert-patterns-btn').addEventListener('click', () => {
+            // REPLACE the existing arrays with the comprehensive ones:
             const defaultBlacklist = [
+                // Original patterns
                 '_*', 'css-*', 'jss*', 'makeStyles-*', 'MuiButton-root-*',
-                'sc-*', 'emotion-*', 'jsx-*', 'vue-*', 'ng-*', 'svelte-*',
-                'webpack-*', 'vite-*', '*-[0-9]*-[0-9]*', '*[0-9][0-9][0-9]*',
-                '*-hash-*', '*-generated-*', 'p-[0-9]*', 'm-[0-9]*', 'w-[0-9]*', 'h-[0-9]*'
+                
+                // Enhanced CSS-in-JS patterns
+                'sc-*', 'emotion-*', 'jsx-*',
+                
+                // Framework-specific patterns
+                'vue-*', 'ng-*', 'svelte-*',
+                
+                // Build tool patterns
+                'webpack-*', 'vite-*',
+                
+                // Dynamic/generated patterns
+                '*-[0-9]*-[0-9]*', '*[0-9][0-9][0-9]*',
+                '*-hash-*', '*-generated-*',
+                
+                // Utility class patterns
+                'p-[0-9]*', 'm-[0-9]*', 'w-[0-9]*', 'h-[0-9]*',
+                
+                // Angular dynamic state classes
+                'ng-untouched', 'ng-touched', 'ng-pristine', 'ng-dirty', 
+                'ng-valid', 'ng-invalid', 'ng-pending', 'ng-submitted',
+                'ng-star-inserted', 'ng-trigger', 'ng-trigger-*',
+                
+                // Bootstrap dynamic classes
+                'active', 'disabled', 'selected', 'checked', 'expanded', 
+                'collapsed', 'open', 'closed', 'show', 'hide', 'hidden',
+                
+                // Common dynamic state classes
+                'loading', 'error', 'success', 'warning', 'focus', 'hover',
+                'visited', 'current', 'highlighted', 'selected'
             ];
+            
             const defaultWhitelist = [
                 'btn*', 'button*', 'primary', 'secondary', 'submit', 'cancel',
                 'nav*', 'menu*', 'form*', 'input*', 'header*', 'footer*', 'sidebar*',
@@ -340,15 +463,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 'collapse*', 'panel*', 'alert*', 'notice*', 'message*', 'notification*',
                 'badge*', 'tag*', 'label*', 'chip*', 'table*', 'row*', 'cell*', 'column*',
                 'list*', 'item*', 'link*', 'text*', 'icon*', 'image*', 'avatar*', 'logo*',
-                'search*', 'filter*', 'sort*', 'pagination*', 'active', 'disabled',
-                'selected', 'checked', 'expanded', 'collapsed', 'open', 'closed',
-                'visible', 'hidden', 'small', 'medium', 'large', 'xl', 'xs',
+                'search*', 'filter*', 'sort*', 'pagination*',
+                'small', 'medium', 'large', 'xl', 'xs',
                 'compact', 'full', 'mini', 'tiny', 'success', 'error', 'warning',
-                'info', 'dark', 'light', 'theme*'
+                'info', 'dark', 'light', 'theme*', 'hydrated', 'form-control', 'form-group', 'input-group*'
             ];
-            overlay.querySelector('#class-blacklist').value = defaultBlacklist.join('\\n');
-            overlay.querySelector('#class-whitelist').value = defaultWhitelist.join('\\n');
+            
+            overlay.querySelector('#class-blacklist').value = defaultBlacklist.join('\n');
+            overlay.querySelector('#class-whitelist').value = defaultWhitelist.join('\n');
         });
+
 
         // Number control event listeners
         overlay.querySelectorAll('.increment-btn').forEach(btn => {
@@ -1139,20 +1263,21 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
         // Update CSS grid layout to include status column
         const actionsHeader = document.querySelector('.actions-header');
         const statusHeader = document.createElement('span');
-        statusHeader.className = 'action-status-header';
+        statusHeader.className = 'action-status-header col-status';
         statusHeader.textContent = 'Status';
         actionsHeader.appendChild(statusHeader);
 
-        // Update grid template
-        actionsHeader.style.gridTemplateColumns = '20px 1fr 60px 110px 50px 100px';
+        // ADD THIS: Apply with-status class to header
+        actionsHeader.classList.add('with-status');
         
-        // Add status cells to existing action items
+        // Add status cells to existing action items and apply with-status class
         document.querySelectorAll('.action-item-collapsed').forEach((item, index) => {
-            item.style.gridTemplateColumns = '20px 1fr 60px 110px 50px 100px';
+            // ADD THIS: Apply with-status class to each action item
+            item.classList.add('with-status');
             
             const statusContainer = document.createElement('div');
             statusContainer.className = 'control-container action-status-container';
-            statusContainer.innerHTML = '<span class="status-text">⏳ Pending</span>';
+            statusContainer.innerHTML = '<span class="status-text status-pending">⏳ Pending</span>';
             item.appendChild(statusContainer);
         });
     }
@@ -1162,16 +1287,22 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
         const statusHeader = document.querySelector('.action-status-header');
         if (statusHeader) statusHeader.remove();
 
-        // Reset grid layout
+        // UPDATED: Remove with-status class from header
         const actionsHeader = document.querySelector('.actions-header');
-        actionsHeader.style.gridTemplateColumns = '20px 1fr 60px 110px 50px';
+        if (actionsHeader) {
+            actionsHeader.classList.remove('with-status');
+        }
 
-        // Remove status containers and reset grid
+        // Remove status containers and with-status class from action items
         document.querySelectorAll('.action-status-container').forEach(container => container.remove());
         document.querySelectorAll('.action-item-collapsed').forEach(item => {
-            item.style.gridTemplateColumns = '20px 1fr 60px 110px 50px';
+            // ADD THIS: Remove with-status class from each action item
+            item.classList.remove('with-status');
         });
     }
+
+
+
 
     function updateActionStatus(index, status, errorMsg = '') {
         // Update the data model
@@ -1187,6 +1318,8 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
         if (!statusContainer) return;
 
         const statusText = statusContainer.querySelector('.status-text');
+        if (!statusText) return;
+
         switch (status) {
             case 'running':
                 statusText.innerHTML = '⏳ Running...';
@@ -1197,15 +1330,18 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
                 statusText.className = 'status-text status-success';
                 break;
             case 'failed':
-                statusText.innerHTML = `❌ Failed: ${errorMsg || 'Unknown error'}`;
+                statusText.innerHTML = `❌ Failed`;
                 statusText.className = 'status-text status-failed';
-                statusText.title = errorMsg;
+                statusText.title = errorMsg || 'Unknown error';
                 break;
             default:
                 statusText.innerHTML = '⏳ Pending';
                 statusText.className = 'status-text status-pending';
+                statusText.title = '';
         }
     }
+
+
 
 
     function highlightCurrentAction(index) {
@@ -1332,6 +1468,10 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
     // --- UI Rendering Functions ---
     function renderActions() {
         actionsList.innerHTML = '';
+        
+        // Check if we need status column
+        const hasStatusColumn = document.querySelector('.action-status-header') !== null;
+        
         recordedActions.forEach((action, index) => {
             const li = document.createElement('li');
             li.dataset.index = index;
@@ -1348,14 +1488,16 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
         });
     }
 
+
     function createCollapsedActionItem(action, index) {
         const container = document.createElement('div');
         container.className = 'action-item-collapsed';
 
-        // Determine number of columns based on replay state
+        // Check if status column exists and add with-status class accordingly
         const hasStatusColumn = document.querySelector('.action-status-header') !== null;
-        const gridColumns = hasStatusColumn ? '20px 1fr 60px 110px 50px 100px' : '20px 1fr 60px 110px 50px';
-        container.style.gridTemplateColumns = gridColumns;
+        if (hasStatusColumn) {
+            container.classList.add('with-status');
+        }
 
         // Drag Handle (Grid Column 1)
         const dragHandle = document.createElement('div');
@@ -1376,10 +1518,9 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
             stateBadge = ` <span style="font-size: 11px; color: #666; margin-left: 8px;" title="Element state: ${action.selector.state}">${stateIcon}</span>`;
         }
 
-        
         const detailsSpan = document.createElement('span');
         detailsSpan.className = 'action-details';
-        detailsSpan.textContent = `${action.action}: ${detailsText}`;
+        detailsSpan.innerHTML = `${action.action}: ${detailsText}${stateBadge}`;
         detailsSpan.title = action.selector?.current || '';
         container.appendChild(detailsSpan);
 
@@ -1388,7 +1529,6 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
         editContainer.className = 'control-container action-edit-container';
         if (action.selector) {
             const editBtn = document.createElement('button');
-            editBtn.innerHTML = '✏️';
             editBtn.className = 'edit-btn';
             editBtn.title = 'Edit Selector';
             editBtn.addEventListener('click', (e) => {
@@ -1419,8 +1559,8 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
         const deleteContainer = document.createElement('div');
         deleteContainer.className = 'control-container action-delete-container';
         const deleteBtn = document.createElement('button');
-        deleteBtn.innerHTML = '\u00D7';
         deleteBtn.className = 'delete-btn';
+        deleteBtn.title = 'Delete Action';
         deleteBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             recordedActions.splice(index, 1);
@@ -1432,7 +1572,6 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
         container.appendChild(deleteContainer);
 
         // Status Container (Grid Column 6 - only if status column exists)
-        // NEW: Preserve status from data model instead of defaulting to pending
         if (hasStatusColumn) {
             const statusContainer = document.createElement('div');
             statusContainer.className = 'control-container action-status-container';
@@ -1466,6 +1605,7 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
         
         return container;
     }
+
 
     function createExpandedActionItem(action, index) {
         const container = document.createElement('div');
@@ -1504,6 +1644,41 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
             renderUI();
         });
         editorControls.appendChild(closeBtn);
+
+        // ===== ADD THIS DEBUG BUTTON CODE HERE =====
+        const debugBtn = document.createElement('button');
+        debugBtn.textContent = '🔍 Debug Storage';
+        debugBtn.style.marginLeft = '8px';
+        debugBtn.addEventListener('click', () => {
+            console.log('=== STORAGE DEBUG ===');
+            
+            // Check current settings
+            console.log('Panel settings object:', settings);
+            
+            // Check storage
+            chrome.storage.local.get(null, (result) => {
+                console.log('📦 ALL STORAGE:', result);
+                console.log('📦 STORAGE KEYS:', Object.keys(result));
+                
+                if (result.extensionSettings) {
+                    console.log('✅ extensionSettings found:', result.extensionSettings);
+                    console.log('📋 Blacklist length:', result.extensionSettings.classBlacklist?.length);
+                    console.log('📋 Blacklist content:', result.extensionSettings.classBlacklist);
+                } else {
+                    console.log('❌ extensionSettings NOT found');
+                }
+            });
+            
+            // Test write
+            chrome.storage.local.set({debugTest: Date.now()}, () => {
+                console.log('✅ Test write successful');
+                chrome.storage.local.get(['debugTest'], (result) => {
+                    console.log('✅ Test read result:', result.debugTest);
+                });
+            });
+        });
+
+
         
         editorHeader.appendChild(editorControls);
         editor.appendChild(editorHeader);
@@ -1527,50 +1702,129 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
         // Safety check for alternatives array
         const alternatives = action.selector.alternatives || [action.selector.current || ''];
         
-        alternatives.forEach(alt => {
-            if (!alt) return; // Skip empty alternatives
+        // NEW: State for show/hide additional alternatives
+        let showingAllAlternatives = false;
+        const maxInitialDisplay = 5;
+        const maxTotalDisplay = 20;
+        
+        // Function to render alternatives
+        function renderAlternatives() {
+            alternativesList.innerHTML = ''; // Clear existing
             
-            const optionDiv = document.createElement('div');
-            optionDiv.className = 'xpath-option';
-            if (alt === action.selector.current) {
-                optionDiv.classList.add('selected');
+            const displayCount = showingAllAlternatives 
+                ? Math.min(maxTotalDisplay, alternatives.length)
+                : Math.min(maxInitialDisplay, alternatives.length);
+            
+            const alternativesToShow = alternatives.slice(0, displayCount);
+            
+            alternativesToShow.forEach((alt, index) => {
+                if (!alt) return; // Skip empty alternatives
+                
+                const optionDiv = document.createElement('div');
+                optionDiv.className = 'xpath-option';
+                if (alt === action.selector.current) {
+                    optionDiv.classList.add('selected');
+                }
+                
+                // Add visual distinction for additional alternatives (beyond top 5)
+                if (index >= maxInitialDisplay) {
+                    optionDiv.style.backgroundColor = '#f8f9fa';
+                }
+                
+                const optionContent = document.createElement('div');
+                optionContent.className = 'xpath-option-content';
+                
+                const xpathText = document.createElement('div');
+                xpathText.className = 'xpath-text';
+                xpathText.textContent = alt;
+                xpathText.addEventListener('click', (e) => {
+                    // Prevent closing if click originated from test button or its children
+                    if (e.target.closest('.test-btn') || e.target.classList.contains('test-btn')) {
+                        return; // Don't close dropdown
+                    }
+                    
+                    // Remove selected class from all options
+                    alternativesList.querySelectorAll('.xpath-option').forEach(opt => opt.classList.remove('selected'));
+                    // Add selected class to clicked option
+                    optionDiv.classList.add('selected');
+                    // Update the action
+                    action.selector.current = alt;
+                    
+                    // VISUAL FEEDBACK: Brief success highlight before closing
+                    optionDiv.style.background = '#dcfce7'; // Success green
+                    optionDiv.style.borderColor = '#10b981';
+                    
+                    setTimeout(() => {
+                        expandedActionIndex = null; // Close the dropdown
+                        renderUI();
+                    }, 300); // 300ms delay for visual feedback
+                });
+                optionContent.appendChild(xpathText);
+                
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'xpath-actions';
+                
+                const testBtn = document.createElement('button');
+                testBtn.className = 'test-btn';
+                testBtn.textContent = 'Test';
+                
+                const resultSpan = document.createElement('span');
+                resultSpan.className = 'validation-result';
+                
+                testBtn.addEventListener('click', () => {
+                    testSelector(alt, 'xpath', resultSpan);
+                });
+                
+                actionsDiv.appendChild(testBtn);
+                actionsDiv.appendChild(resultSpan);
+                optionContent.appendChild(actionsDiv);
+                
+                optionDiv.appendChild(optionContent);
+                alternativesList.appendChild(optionDiv);
+            });
+        }
+        
+        // Initial render of alternatives
+        renderAlternatives();
+        alternativesSection.appendChild(alternativesList);
+        
+        // NEW: Show All Alternatives button (only if there are more than maxInitialDisplay)
+        if (alternatives.length > maxInitialDisplay) {
+            const showAllBtn = document.createElement('button');
+            showAllBtn.className = 'show-all-alternatives-btn';
+            
+            function updateShowAllButton() {
+                if (showingAllAlternatives) {
+                    showAllBtn.innerHTML = '📋 Show Less';
+                    showAllBtn.title = `Show only top ${maxInitialDisplay} alternatives`;
+                } else {
+                    const additionalCount = Math.min(maxTotalDisplay, alternatives.length) - maxInitialDisplay;
+                    showAllBtn.innerHTML = `📋 Show All Alternatives (+${additionalCount} more)`;
+                    showAllBtn.title = `Show ${additionalCount} additional alternatives`;
+                }
             }
             
-            const optionContent = document.createElement('div');
-            optionContent.className = 'xpath-option-content';
+            updateShowAllButton();
             
-            const xpathText = document.createElement('div');
-            xpathText.className = 'xpath-text';
-            xpathText.textContent = alt;
-            xpathText.addEventListener('click', () => {
-                action.selector.current = alt;
-                renderUI();
-            });
-            optionContent.appendChild(xpathText);
-            
-            const actionsDiv = document.createElement('div');
-            actionsDiv.className = 'xpath-actions';
-            
-            const testBtn = document.createElement('button');
-            testBtn.className = 'test-btn';
-            testBtn.textContent = 'Test';
-            
-            const resultSpan = document.createElement('span');
-            resultSpan.className = 'validation-result';
-            
-            testBtn.addEventListener('click', () => {
-                testSelector(alt, 'xpath', resultSpan);
+            showAllBtn.addEventListener('click', () => {
+                showingAllAlternatives = !showingAllAlternatives;
+                renderAlternatives();
+                updateShowAllButton();
+                
+                // Scroll the additional alternatives into view when expanding
+                if (showingAllAlternatives) {
+                    setTimeout(() => {
+                        const additionalAlternatives = alternativesList.children[maxInitialDisplay];
+                        if (additionalAlternatives) {
+                            additionalAlternatives.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                        }
+                    }, 100);
+                }
             });
             
-            actionsDiv.appendChild(testBtn);
-            actionsDiv.appendChild(resultSpan);
-            optionContent.appendChild(actionsDiv);
-            
-            optionDiv.appendChild(optionContent);
-            alternativesList.appendChild(optionDiv);
-        });
+            alternativesSection.appendChild(showAllBtn);
+        }
         
-        alternativesSection.appendChild(alternativesList);
         editorContent.appendChild(alternativesSection);
         
         // Custom Selector Section
@@ -1785,7 +2039,6 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
 
             editorContent.appendChild(stateSection);
         }
-        // ===== END OF ELEMENT STATE SECTION =====
         
         editor.appendChild(editorContent);
         container.appendChild(editor);
@@ -2062,11 +2315,101 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
     let draggedItemIndex = null;
 
     function clearDropIndicators() {
-        document.querySelectorAll('.drop-above, .drop-below').forEach(el => {
-            el.classList.remove('drop-above', 'drop-below');
+        document.querySelectorAll('.drag-over-above, .drag-over-below').forEach(el => {
+            el.classList.remove('drag-over-above', 'drag-over-below');
         });
         actionsList.classList.remove('drag-active');
+        
+        // Clear scroll indicators
+        const container = document.querySelector('.actions-list-container');
+        if (container) {
+            container.classList.remove('scroll-up', 'scroll-down');
+        }
     }
+
+    function handleAutoScroll(e) {
+        const container = document.querySelector('.actions-list-container');
+        if (!container) return;
+        
+        const rect = container.getBoundingClientRect();
+        const mouseY = e.clientY;
+        const scrollTop = container.scrollTop;
+        const scrollHeight = container.scrollHeight;
+        const containerHeight = container.clientHeight;
+        
+        // Check if we're in scroll zones
+        const topZone = mouseY < rect.top + AUTO_SCROLL_CONFIG.ZONE_HEIGHT;
+        const bottomZone = mouseY > rect.bottom - AUTO_SCROLL_CONFIG.ZONE_HEIGHT;
+        
+        // Calculate scroll speed based on proximity to edge
+        let scrollSpeed = AUTO_SCROLL_CONFIG.SCROLL_SPEED;
+        if (topZone) {
+            const distanceFromTop = mouseY - rect.top;
+            scrollSpeed = Math.max(
+                AUTO_SCROLL_CONFIG.SCROLL_SPEED,
+                AUTO_SCROLL_CONFIG.MAX_SCROLL_SPEED * (1 - distanceFromTop / AUTO_SCROLL_CONFIG.ZONE_HEIGHT)
+            );
+        } else if (bottomZone) {
+            const distanceFromBottom = rect.bottom - mouseY;
+            scrollSpeed = Math.max(
+                AUTO_SCROLL_CONFIG.SCROLL_SPEED,
+                AUTO_SCROLL_CONFIG.MAX_SCROLL_SPEED * (1 - distanceFromBottom / AUTO_SCROLL_CONFIG.ZONE_HEIGHT)
+            );
+        }
+        
+        // Start auto-scroll if in zone and can scroll
+        if (topZone && scrollTop > 0) {
+            startAutoScroll('up', scrollSpeed, container);
+        } else if (bottomZone && scrollTop < scrollHeight - containerHeight) {
+            startAutoScroll('down', scrollSpeed, container);
+        } else {
+            stopAutoScroll();
+        }
+    }
+
+    function startAutoScroll(direction, speed, container) {
+        // Don't restart if already scrolling in same direction
+        if (currentScrollDirection === direction && autoScrollInterval) {
+            return;
+        }
+        
+        stopAutoScroll();
+        
+        currentScrollDirection = direction;
+        
+        // Add visual indicator
+        container.classList.remove('scroll-up', 'scroll-down');
+        container.classList.add(`scroll-${direction}`);
+        
+        autoScrollInterval = setInterval(() => {
+            const scrollAmount = direction === 'up' ? -speed : speed;
+            container.scrollTop += scrollAmount;
+            
+            // Stop if we've reached the limits
+            if (direction === 'up' && container.scrollTop <= 0) {
+                stopAutoScroll();
+            } else if (direction === 'down' && 
+                       container.scrollTop >= container.scrollHeight - container.clientHeight) {
+                stopAutoScroll();
+            }
+        }, AUTO_SCROLL_CONFIG.SCROLL_INTERVAL);
+    }
+
+    function stopAutoScroll() {
+        if (autoScrollInterval) {
+            clearInterval(autoScrollInterval);
+            autoScrollInterval = null;
+        }
+        
+        currentScrollDirection = null;
+        
+        // Remove visual indicators
+        const container = document.querySelector('.actions-list-container');
+        if (container) {
+            container.classList.remove('scroll-up', 'scroll-down');
+        }
+    }
+
 
     function getDropPosition(e, targetLi) {
         if (!targetLi) return null;
@@ -2078,16 +2421,43 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
         return mouseY < midpoint ? 'above' : 'below';
     }
 
-    function showDropIndicator(e) {
+
+
+    function handleDragOver(e) {
+        // Clear existing indicators
         clearDropIndicators();
+        
+        // Add drag-active state
         actionsList.classList.add('drag-active');
         
+        // Show drop indicators
+        showDropIndicator(e);
+        
+        // Handle auto-scroll
+        handleAutoScroll(e);
+    }
+
+
+
+    function showDropIndicator(e) {
         const targetLi = e.target.closest('li');
         if (targetLi && targetLi.dataset.index) {
             const position = getDropPosition(e, targetLi);
-            targetLi.classList.add(`drop-${position}`);
+            
+            // Remove any existing drop classes from all items
+            document.querySelectorAll('.drag-over-above, .drag-over-below').forEach(el => {
+                el.classList.remove('drag-over-above', 'drag-over-below');
+            });
+            
+            // Add appropriate drop class
+            if (position === 'above') {
+                targetLi.classList.add('drag-over-above');
+            } else {
+                targetLi.classList.add('drag-over-below');
+            }
         }
     }
+
 
     actionsList.addEventListener('dragstart', (e) => {
         const li = e.target.closest('li');
@@ -2098,40 +2468,58 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
             // Set drag effect
             e.dataTransfer.effectAllowed = 'move';
             e.dataTransfer.setData('text/html', li.outerHTML);
+            
+            // Add drag-active class to container
+            actionsList.classList.add('drag-active');
         }
     });
+
 
     actionsList.addEventListener('dragend', (e) => {
         const li = e.target.closest('li');
         if (li) {
             li.classList.remove('dragging');
         }
+        
+        // Clean up all drag states
         clearDropIndicators();
+        stopAutoScroll();
         draggedItemIndex = null;
     });
+
 
     actionsList.addEventListener('dragover', (e) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
-        showDropIndicator(e);
+        
+        // Handle visual feedback and auto-scroll
+        handleDragOver(e);
     });
 
+    // Enhanced dragenter event
     actionsList.addEventListener('dragenter', (e) => {
         e.preventDefault();
-        showDropIndicator(e);
+        handleDragOver(e);
     });
 
+    // Enhanced dragleave event
     actionsList.addEventListener('dragleave', (e) => {
         // Only clear if we're leaving the actions list entirely
         if (!actionsList.contains(e.relatedTarget)) {
             clearDropIndicators();
+            stopAutoScroll();
         }
     });
 
+    // Enhanced drop event (keep your existing drop logic but add cleanup)
     actionsList.addEventListener('drop', (e) => {
         e.preventDefault();
-        clearDropIndicators();
         
+        // Clean up visual states
+        clearDropIndicators();
+        stopAutoScroll();
+        
+        // Your existing drop logic here...
         if (draggedItemIndex === null || draggedItemIndex === undefined) return;
         
         const targetLi = e.target.closest('li');
@@ -2147,12 +2535,12 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
                 dropIndex = targetIndex + 1;
             }
         } else {
-            // Dropped outside of any item - check if it's at the end
+            // Dropped outside of any item
             const rect = actionsList.getBoundingClientRect();
             if (e.clientY > rect.bottom - 40) {
-                dropIndex = recordedActions.length; // Drop at end
+                dropIndex = recordedActions.length;
             } else {
-                dropIndex = 0; // Drop at beginning
+                dropIndex = 0;
             }
         }
         
@@ -2179,5 +2567,5 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
         }
         
         draggedItemIndex = null;
+        });
     });
-});
