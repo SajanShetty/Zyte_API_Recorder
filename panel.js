@@ -32,6 +32,19 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     let settings = {};
 
+    // Auto-scroll configuration
+    const AUTO_SCROLL_CONFIG = {
+        ZONE_HEIGHT: 50,           // Height of scroll zone in pixels
+        SCROLL_SPEED: 5,           // Pixels to scroll per interval
+        SCROLL_INTERVAL: 16,       // Milliseconds between scroll steps (60fps)
+        MAX_SCROLL_SPEED: 15       // Maximum scroll speed
+    };
+
+    let autoScrollInterval = null;
+    let currentScrollDirection = null;
+
+
+
     // --- Load Settings ---
     function loadSettings() {
         chrome.storage.local.get(['extensionSettings'], (result) => {
@@ -1250,20 +1263,21 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
         // Update CSS grid layout to include status column
         const actionsHeader = document.querySelector('.actions-header');
         const statusHeader = document.createElement('span');
-        statusHeader.className = 'action-status-header';
+        statusHeader.className = 'action-status-header col-status';
         statusHeader.textContent = 'Status';
         actionsHeader.appendChild(statusHeader);
 
-        // Update grid template
-        actionsHeader.style.gridTemplateColumns = '20px 1fr 60px 110px 50px 100px';
+        // ADD THIS: Apply with-status class to header
+        actionsHeader.classList.add('with-status');
         
-        // Add status cells to existing action items
+        // Add status cells to existing action items and apply with-status class
         document.querySelectorAll('.action-item-collapsed').forEach((item, index) => {
-            item.style.gridTemplateColumns = '20px 1fr 60px 110px 50px 100px';
+            // ADD THIS: Apply with-status class to each action item
+            item.classList.add('with-status');
             
             const statusContainer = document.createElement('div');
             statusContainer.className = 'control-container action-status-container';
-            statusContainer.innerHTML = '<span class="status-text">⏳ Pending</span>';
+            statusContainer.innerHTML = '<span class="status-text status-pending">⏳ Pending</span>';
             item.appendChild(statusContainer);
         });
     }
@@ -1273,16 +1287,22 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
         const statusHeader = document.querySelector('.action-status-header');
         if (statusHeader) statusHeader.remove();
 
-        // Reset grid layout
+        // UPDATED: Remove with-status class from header
         const actionsHeader = document.querySelector('.actions-header');
-        actionsHeader.style.gridTemplateColumns = '20px 1fr 60px 110px 50px';
+        if (actionsHeader) {
+            actionsHeader.classList.remove('with-status');
+        }
 
-        // Remove status containers and reset grid
+        // Remove status containers and with-status class from action items
         document.querySelectorAll('.action-status-container').forEach(container => container.remove());
         document.querySelectorAll('.action-item-collapsed').forEach(item => {
-            item.style.gridTemplateColumns = '20px 1fr 60px 110px 50px';
+            // ADD THIS: Remove with-status class from each action item
+            item.classList.remove('with-status');
         });
     }
+
+
+
 
     function updateActionStatus(index, status, errorMsg = '') {
         // Update the data model
@@ -1298,6 +1318,8 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
         if (!statusContainer) return;
 
         const statusText = statusContainer.querySelector('.status-text');
+        if (!statusText) return;
+
         switch (status) {
             case 'running':
                 statusText.innerHTML = '⏳ Running...';
@@ -1308,15 +1330,18 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
                 statusText.className = 'status-text status-success';
                 break;
             case 'failed':
-                statusText.innerHTML = `❌ Failed: ${errorMsg || 'Unknown error'}`;
+                statusText.innerHTML = `❌ Failed`;
                 statusText.className = 'status-text status-failed';
-                statusText.title = errorMsg;
+                statusText.title = errorMsg || 'Unknown error';
                 break;
             default:
                 statusText.innerHTML = '⏳ Pending';
                 statusText.className = 'status-text status-pending';
+                statusText.title = '';
         }
     }
+
+
 
 
     function highlightCurrentAction(index) {
@@ -1443,6 +1468,10 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
     // --- UI Rendering Functions ---
     function renderActions() {
         actionsList.innerHTML = '';
+        
+        // Check if we need status column
+        const hasStatusColumn = document.querySelector('.action-status-header') !== null;
+        
         recordedActions.forEach((action, index) => {
             const li = document.createElement('li');
             li.dataset.index = index;
@@ -1459,14 +1488,16 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
         });
     }
 
+
     function createCollapsedActionItem(action, index) {
         const container = document.createElement('div');
         container.className = 'action-item-collapsed';
 
-        // Determine number of columns based on replay state
+        // Check if status column exists and add with-status class accordingly
         const hasStatusColumn = document.querySelector('.action-status-header') !== null;
-        const gridColumns = hasStatusColumn ? '20px 1fr 60px 110px 50px 100px' : '20px 1fr 60px 110px 50px';
-        container.style.gridTemplateColumns = gridColumns;
+        if (hasStatusColumn) {
+            container.classList.add('with-status');
+        }
 
         // Drag Handle (Grid Column 1)
         const dragHandle = document.createElement('div');
@@ -1487,10 +1518,9 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
             stateBadge = ` <span style="font-size: 11px; color: #666; margin-left: 8px;" title="Element state: ${action.selector.state}">${stateIcon}</span>`;
         }
 
-        
         const detailsSpan = document.createElement('span');
         detailsSpan.className = 'action-details';
-        detailsSpan.textContent = `${action.action}: ${detailsText}`;
+        detailsSpan.innerHTML = `${action.action}: ${detailsText}${stateBadge}`;
         detailsSpan.title = action.selector?.current || '';
         container.appendChild(detailsSpan);
 
@@ -1499,7 +1529,6 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
         editContainer.className = 'control-container action-edit-container';
         if (action.selector) {
             const editBtn = document.createElement('button');
-            editBtn.innerHTML = '✏️';
             editBtn.className = 'edit-btn';
             editBtn.title = 'Edit Selector';
             editBtn.addEventListener('click', (e) => {
@@ -1530,8 +1559,8 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
         const deleteContainer = document.createElement('div');
         deleteContainer.className = 'control-container action-delete-container';
         const deleteBtn = document.createElement('button');
-        deleteBtn.innerHTML = '\u00D7';
         deleteBtn.className = 'delete-btn';
+        deleteBtn.title = 'Delete Action';
         deleteBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             recordedActions.splice(index, 1);
@@ -1543,7 +1572,6 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
         container.appendChild(deleteContainer);
 
         // Status Container (Grid Column 6 - only if status column exists)
-        // NEW: Preserve status from data model instead of defaulting to pending
         if (hasStatusColumn) {
             const statusContainer = document.createElement('div');
             statusContainer.className = 'control-container action-status-container';
@@ -1577,6 +1605,7 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
         
         return container;
     }
+
 
     function createExpandedActionItem(action, index) {
         const container = document.createElement('div');
@@ -1708,14 +1737,27 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
                 const xpathText = document.createElement('div');
                 xpathText.className = 'xpath-text';
                 xpathText.textContent = alt;
-                xpathText.addEventListener('click', () => {
+                xpathText.addEventListener('click', (e) => {
+                    // Prevent closing if click originated from test button or its children
+                    if (e.target.closest('.test-btn') || e.target.classList.contains('test-btn')) {
+                        return; // Don't close dropdown
+                    }
+                    
                     // Remove selected class from all options
                     alternativesList.querySelectorAll('.xpath-option').forEach(opt => opt.classList.remove('selected'));
                     // Add selected class to clicked option
                     optionDiv.classList.add('selected');
                     // Update the action
                     action.selector.current = alt;
-                    renderUI();
+                    
+                    // VISUAL FEEDBACK: Brief success highlight before closing
+                    optionDiv.style.background = '#dcfce7'; // Success green
+                    optionDiv.style.borderColor = '#10b981';
+                    
+                    setTimeout(() => {
+                        expandedActionIndex = null; // Close the dropdown
+                        renderUI();
+                    }, 300); // 300ms delay for visual feedback
                 });
                 optionContent.appendChild(xpathText);
                 
@@ -2273,11 +2315,101 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
     let draggedItemIndex = null;
 
     function clearDropIndicators() {
-        document.querySelectorAll('.drop-above, .drop-below').forEach(el => {
-            el.classList.remove('drop-above', 'drop-below');
+        document.querySelectorAll('.drag-over-above, .drag-over-below').forEach(el => {
+            el.classList.remove('drag-over-above', 'drag-over-below');
         });
         actionsList.classList.remove('drag-active');
+        
+        // Clear scroll indicators
+        const container = document.querySelector('.actions-list-container');
+        if (container) {
+            container.classList.remove('scroll-up', 'scroll-down');
+        }
     }
+
+    function handleAutoScroll(e) {
+        const container = document.querySelector('.actions-list-container');
+        if (!container) return;
+        
+        const rect = container.getBoundingClientRect();
+        const mouseY = e.clientY;
+        const scrollTop = container.scrollTop;
+        const scrollHeight = container.scrollHeight;
+        const containerHeight = container.clientHeight;
+        
+        // Check if we're in scroll zones
+        const topZone = mouseY < rect.top + AUTO_SCROLL_CONFIG.ZONE_HEIGHT;
+        const bottomZone = mouseY > rect.bottom - AUTO_SCROLL_CONFIG.ZONE_HEIGHT;
+        
+        // Calculate scroll speed based on proximity to edge
+        let scrollSpeed = AUTO_SCROLL_CONFIG.SCROLL_SPEED;
+        if (topZone) {
+            const distanceFromTop = mouseY - rect.top;
+            scrollSpeed = Math.max(
+                AUTO_SCROLL_CONFIG.SCROLL_SPEED,
+                AUTO_SCROLL_CONFIG.MAX_SCROLL_SPEED * (1 - distanceFromTop / AUTO_SCROLL_CONFIG.ZONE_HEIGHT)
+            );
+        } else if (bottomZone) {
+            const distanceFromBottom = rect.bottom - mouseY;
+            scrollSpeed = Math.max(
+                AUTO_SCROLL_CONFIG.SCROLL_SPEED,
+                AUTO_SCROLL_CONFIG.MAX_SCROLL_SPEED * (1 - distanceFromBottom / AUTO_SCROLL_CONFIG.ZONE_HEIGHT)
+            );
+        }
+        
+        // Start auto-scroll if in zone and can scroll
+        if (topZone && scrollTop > 0) {
+            startAutoScroll('up', scrollSpeed, container);
+        } else if (bottomZone && scrollTop < scrollHeight - containerHeight) {
+            startAutoScroll('down', scrollSpeed, container);
+        } else {
+            stopAutoScroll();
+        }
+    }
+
+    function startAutoScroll(direction, speed, container) {
+        // Don't restart if already scrolling in same direction
+        if (currentScrollDirection === direction && autoScrollInterval) {
+            return;
+        }
+        
+        stopAutoScroll();
+        
+        currentScrollDirection = direction;
+        
+        // Add visual indicator
+        container.classList.remove('scroll-up', 'scroll-down');
+        container.classList.add(`scroll-${direction}`);
+        
+        autoScrollInterval = setInterval(() => {
+            const scrollAmount = direction === 'up' ? -speed : speed;
+            container.scrollTop += scrollAmount;
+            
+            // Stop if we've reached the limits
+            if (direction === 'up' && container.scrollTop <= 0) {
+                stopAutoScroll();
+            } else if (direction === 'down' && 
+                       container.scrollTop >= container.scrollHeight - container.clientHeight) {
+                stopAutoScroll();
+            }
+        }, AUTO_SCROLL_CONFIG.SCROLL_INTERVAL);
+    }
+
+    function stopAutoScroll() {
+        if (autoScrollInterval) {
+            clearInterval(autoScrollInterval);
+            autoScrollInterval = null;
+        }
+        
+        currentScrollDirection = null;
+        
+        // Remove visual indicators
+        const container = document.querySelector('.actions-list-container');
+        if (container) {
+            container.classList.remove('scroll-up', 'scroll-down');
+        }
+    }
+
 
     function getDropPosition(e, targetLi) {
         if (!targetLi) return null;
@@ -2289,16 +2421,43 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
         return mouseY < midpoint ? 'above' : 'below';
     }
 
-    function showDropIndicator(e) {
+
+
+    function handleDragOver(e) {
+        // Clear existing indicators
         clearDropIndicators();
+        
+        // Add drag-active state
         actionsList.classList.add('drag-active');
         
+        // Show drop indicators
+        showDropIndicator(e);
+        
+        // Handle auto-scroll
+        handleAutoScroll(e);
+    }
+
+
+
+    function showDropIndicator(e) {
         const targetLi = e.target.closest('li');
         if (targetLi && targetLi.dataset.index) {
             const position = getDropPosition(e, targetLi);
-            targetLi.classList.add(`drop-${position}`);
+            
+            // Remove any existing drop classes from all items
+            document.querySelectorAll('.drag-over-above, .drag-over-below').forEach(el => {
+                el.classList.remove('drag-over-above', 'drag-over-below');
+            });
+            
+            // Add appropriate drop class
+            if (position === 'above') {
+                targetLi.classList.add('drag-over-above');
+            } else {
+                targetLi.classList.add('drag-over-below');
+            }
         }
     }
+
 
     actionsList.addEventListener('dragstart', (e) => {
         const li = e.target.closest('li');
@@ -2309,40 +2468,58 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
             // Set drag effect
             e.dataTransfer.effectAllowed = 'move';
             e.dataTransfer.setData('text/html', li.outerHTML);
+            
+            // Add drag-active class to container
+            actionsList.classList.add('drag-active');
         }
     });
+
 
     actionsList.addEventListener('dragend', (e) => {
         const li = e.target.closest('li');
         if (li) {
             li.classList.remove('dragging');
         }
+        
+        // Clean up all drag states
         clearDropIndicators();
+        stopAutoScroll();
         draggedItemIndex = null;
     });
+
 
     actionsList.addEventListener('dragover', (e) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
-        showDropIndicator(e);
+        
+        // Handle visual feedback and auto-scroll
+        handleDragOver(e);
     });
 
+    // Enhanced dragenter event
     actionsList.addEventListener('dragenter', (e) => {
         e.preventDefault();
-        showDropIndicator(e);
+        handleDragOver(e);
     });
 
+    // Enhanced dragleave event
     actionsList.addEventListener('dragleave', (e) => {
         // Only clear if we're leaving the actions list entirely
         if (!actionsList.contains(e.relatedTarget)) {
             clearDropIndicators();
+            stopAutoScroll();
         }
     });
 
+    // Enhanced drop event (keep your existing drop logic but add cleanup)
     actionsList.addEventListener('drop', (e) => {
         e.preventDefault();
-        clearDropIndicators();
         
+        // Clean up visual states
+        clearDropIndicators();
+        stopAutoScroll();
+        
+        // Your existing drop logic here...
         if (draggedItemIndex === null || draggedItemIndex === undefined) return;
         
         const targetLi = e.target.closest('li');
@@ -2358,12 +2535,12 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
                 dropIndex = targetIndex + 1;
             }
         } else {
-            // Dropped outside of any item - check if it's at the end
+            // Dropped outside of any item
             const rect = actionsList.getBoundingClientRect();
             if (e.clientY > rect.bottom - 40) {
-                dropIndex = recordedActions.length; // Drop at end
+                dropIndex = recordedActions.length;
             } else {
-                dropIndex = 0; // Drop at beginning
+                dropIndex = 0;
             }
         }
         
@@ -2390,5 +2567,5 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
         }
         
         draggedItemIndex = null;
+        });
     });
-});
