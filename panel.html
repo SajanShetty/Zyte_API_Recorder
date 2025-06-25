@@ -10,6 +10,7 @@
       <button id="start-btn" title="Start a new recording session">Start Recording</button>
       <button id="stop-btn" title="Stop the current session" disabled>Stop Recording</button>
       <button id="clear-btn" title="Clear all recorded actions">Clear</button>
+      <button id="settings-btn" title="Open settings panel">⚙️</button>
     </div>
 
     <div class="toolbar manual-actions">
@@ -25,23 +26,33 @@
             <input type="checkbox" id="screenshot-checkbox" checked>
             <label for="screenshot-checkbox">Screenshot</label>
         </div>
+        <div class="iframe-container">
+            <input type="checkbox" id="include-iframes-checkbox">
+            <label for="include-iframes-checkbox" title="Include iframes in payload">Include Iframes</label>
+        </div>
     </div>
 
     <div class="main-content">
       <div class="pane left-pane">
         <h3>Recorded Actions</h3>
         <div class="actions-header">
+            <span class="action-drag-header"></span>
             <span class="action-details-header">Action</span>
-            <span class="action-edit-header">Edit XPath</span>
+            <span class="action-edit-header">Edit</span>
             <span class="action-continue-header">Continue on Error</span>
             <span class="action-delete-header">Delete</span>
         </div>
         <ol id="actions-list"></ol>
       </div>
       <div class="pane right-pane">
-        <h3>Zyte API Payload</h3>
+        <div class="payload-header">
+          <h3>Zyte API Payload</h3>
+          <div class="payload-controls">
+            <button id="copy-payload-btn">Copy Payload</button>
+            <button id="replay-btn">Replay</button>
+          </div>
+        </div>
         <pre><code id="payload-display">{ }</code></pre>
-        <button id="copy-payload-btn">Copy Payload</button>
       </div>
     </div>
   </div>

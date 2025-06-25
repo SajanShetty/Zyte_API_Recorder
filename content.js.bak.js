@@ -20,7 +20,6 @@ let settings = null;
 let debugMode = false;
 
 
-
 // Enhanced default settings with new performance options
 const ENHANCED_DEFAULT_SETTINGS = {
     // Original settings
@@ -28,20 +27,7 @@ const ENHANCED_DEFAULT_SETTINGS = {
         '_*', 'css-*', 'jss*', 'makeStyles-*', 'MuiButton-root-*',
         'sc-*', 'emotion-*', 'jsx-*', 'vue-*', 'ng-*', 'svelte-*',
         'webpack-*', 'vite-*', '*-[0-9]*-[0-9]*', '*[0-9][0-9][0-9]*',
-        '*-hash-*', '*-generated-*', 'p-[0-9]*', 'm-[0-9]*', 'w-[0-9]*', 'h-[0-9]*',
-        
-        // NEW: Angular dynamic state classes
-        'ng-untouched', 'ng-touched', 'ng-pristine', 'ng-dirty', 
-        'ng-valid', 'ng-invalid', 'ng-pending', 'ng-submitted',
-        'ng-star-inserted', 'ng-trigger', 'ng-trigger-*',
-        
-        // Bootstrap dynamic classes
-        'active', 'disabled', 'selected', 'checked', 'expanded', 
-        'collapsed', 'open', 'closed', 'show', 'hide', 'hidden',
-        
-        // Common dynamic state classes
-        'loading', 'error', 'success', 'warning', 'focus', 'hover',
-        'visited', 'current', 'highlighted', 'selected'
+        '*-hash-*', '*-generated-*', 'p-[0-9]*', 'm-[0-9]*', 'w-[0-9]*', 'h-[0-9]*'
     ],
     classWhitelist: [
         'btn*', 'button*', 'primary', 'secondary', 'submit', 'cancel',
@@ -51,12 +37,11 @@ const ENHANCED_DEFAULT_SETTINGS = {
         'collapse*', 'panel*', 'alert*', 'notice*', 'message*', 'notification*',
         'badge*', 'tag*', 'label*', 'chip*', 'table*', 'row*', 'cell*', 'column*',
         'list*', 'item*', 'link*', 'text*', 'icon*', 'image*', 'avatar*', 'logo*',
-        'search*', 'filter*', 'sort*', 'pagination*',
-        'small', 'medium', 'large', 'xl', 'xs',
-        'compact', 'full', 'mini', 'tiny', 'info', 'dark', 'light', 'theme*',
-        
-        // Component library classes (stable ones)
-        'hydrated', 'form-control', 'form-group', 'input-group*'
+        'search*', 'filter*', 'sort*', 'pagination*', 'active', 'disabled',
+        'selected', 'checked', 'expanded', 'collapsed', 'open', 'closed',
+        'visible', 'hidden', 'small', 'medium', 'large', 'xl', 'xs',
+        'compact', 'full', 'mini', 'tiny', 'success', 'error', 'warning',
+        'info', 'dark', 'light', 'theme*'
     ],
     scrollDelay: 1000,
     replayDelay: 500,
@@ -121,10 +106,6 @@ settings = ENHANCED_DEFAULT_SETTINGS; // Set immediately as fallback
 debugMode = false;
 loadSettings(); // Then load from storage
 
-let isRecording = false;
-let eventListeners = [];
-
-
 // Listen for settings updates
 chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace === 'local' && changes.extensionSettings) {
@@ -136,45 +117,6 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
         }
     }
 });
-
-
-// Replace the syncRecordingState function with this more robust version:
-
-// Sync recording state on page load/reload with retry mechanism
-function syncRecordingState(retryCount = 0) {
-    const maxRetries = 3;
-    const retryDelay = 1000; // 1 second
-    
-    if (debugMode) console.log(`Attempting to sync recording state (attempt ${retryCount + 1})`);
-    
-    chrome.runtime.sendMessage({ type: 'get_recording_state' }, (response) => {
-        if (chrome.runtime.lastError) {
-            if (debugMode) console.warn('Could not get recording state:', chrome.runtime.lastError.message);
-            
-            // Retry if we haven't exceeded max retries
-            if (retryCount < maxRetries) {
-                if (debugMode) console.log(`Retrying in ${retryDelay}ms...`);
-                setTimeout(() => syncRecordingState(retryCount + 1), retryDelay);
-            } else {
-                if (debugMode) console.log('Max retries reached - assuming recording is not active');
-            }
-            return;
-        }
-        
-        if (response && response.isRecording) {
-            if (debugMode) console.log('Page loaded - resuming recording from background state');
-            startRecordingListeners();
-        } else {
-            if (debugMode) console.log('Page loaded - recording not active');
-        }
-    });
-}
-
-// Call sync when content script loads, with a small delay to ensure background script is ready
-setTimeout(() => {
-    syncRecordingState();
-}, 100);
-
 
 // --- Helper function to convert glob patterns to regex ---
 function globToRegex(glob) {
@@ -360,11 +302,9 @@ function createUniquenessChecker() {
 function getAttributePriority(attrName) {
     const priorityMap = {
         'data-testid': 100, 'data-cy': 100, 'data-test': 95,
-        'id': 90, 'hukid': 88, 'name': 85, 'aria-label': 80, 
-        'aria-labelledby': 75, 'role': 70,
-        'placeholder': 65, 'title': 60, 'alt': 55, 'for': 50,
-        'value': 45, 'href': 40, 'src': 35, 'type': 30, 
-        'class': 20, // Lowered priority
+        'id': 90, 'aria-label': 85, 'aria-labelledby': 80, 'role': 75,
+        'name': 70, 'placeholder': 65, 'title': 60, 'alt': 55, 'for': 50,
+        'value': 45, 'href': 40, 'src': 35, 'type': 30, 'class': 25,
         'tabindex': 10, 'target': 5
     };
     return priorityMap[attrName] || 0;
@@ -1179,14 +1119,7 @@ function generateEnhancedSelectors(element) {
     if (!element || !element.tagName) return { best: '', alternatives: [] };
     
     const startTime = performance.now();
-    if (debugMode) {
-        console.log('=== Enhanced Selector Generation Started ===');
-        console.log('Element:', element);
-        console.log('Element tagName:', element.tagName);
-        console.log('Element id:', element.id);
-        console.log('Element className:', element.className);
-        console.log('Element attributes:', Array.from(element.attributes || []).map(attr => `${attr.name}="${attr.value}"`));
-    }
+    if (debugMode) console.log('=== Enhanced Selector Generation Started ===');
     
     const isXPathUnique = createUniquenessChecker();
     const allScoredSelectors = [];
@@ -1209,28 +1142,22 @@ function generateEnhancedSelectors(element) {
         depth++;
     }
     
-    if (debugMode) {
-        console.log('Meaningful parents found:', meaningfulParents.length);
-        console.log('Element characteristics:', getElementCharacteristics(element));
-        console.log('Stable attributes:', getStableAttributes(element));
-    }
-    
     try {
         // Run all strategies with timeout protection
         const strategies = [
-            { name: 'ID', fn: () => generateIdSelectors(element, tagName, isXPathUnique) },
-            { name: 'Test Attributes', fn: () => generateTestAttributeSelectors(element, tagName, isXPathUnique) },
-            { name: 'Contextual Labels', fn: () => generateContextualLabelSelectors(element, tagName, isXPathUnique) },
-            { name: 'Stable Attributes', fn: () => generateStableAttributeSelectors(element, tagName, isXPathUnique) },
-            { name: 'Parent Anchored', fn: () => generateParentAnchoredSelectors(element, meaningfulParents, isXPathUnique) },
-            { name: 'Child Anchored', fn: () => generateChildAnchoredSelectors(element, isXPathUnique) },
-            { name: 'Element Specific', fn: () => generateElementSpecificSelectors(element, tagName, isXPathUnique) },
-            { name: 'Text Based', fn: () => generateTextBasedSelectors(element, tagName, isXPathUnique) },
-            { name: 'Class Based', fn: () => generateClassBasedSelectors(element, tagName, isXPathUnique) },
-            { name: 'Flexible Sibling', fn: () => generateFlexibleSiblingSelectors(element, tagName, isXPathUnique) },
-            { name: 'Specific Sibling', fn: () => generateSpecificSiblingSelectors(element, tagName, isXPathUnique) },
-            { name: 'Contextual', fn: () => generateContextualSelectors(element, tagName, isXPathUnique) },
-            { name: 'Structural', fn: () => generateOptimizedStructuralSelectors(element, isXPathUnique) }
+            () => generateIdSelectors(element, tagName, isXPathUnique),
+            () => generateTestAttributeSelectors(element, tagName, isXPathUnique),
+            () => generateContextualLabelSelectors(element, tagName, isXPathUnique),
+            () => generateStableAttributeSelectors(element, tagName, isXPathUnique),
+            () => generateParentAnchoredSelectors(element, meaningfulParents, isXPathUnique),
+            () => generateChildAnchoredSelectors(element, isXPathUnique),
+            () => generateElementSpecificSelectors(element, tagName, isXPathUnique),
+            () => generateTextBasedSelectors(element, tagName, isXPathUnique),
+            () => generateClassBasedSelectors(element, tagName, isXPathUnique),
+            () => generateFlexibleSiblingSelectors(element, tagName, isXPathUnique),
+            () => generateSpecificSiblingSelectors(element, tagName, isXPathUnique),
+            () => generateContextualSelectors(element, tagName, isXPathUnique),
+            () => generateOptimizedStructuralSelectors(element, isXPathUnique)
         ];
         
         for (const strategy of strategies) {
@@ -1240,15 +1167,9 @@ function generateEnhancedSelectors(element) {
             }
             
             try {
-                if (debugMode) console.log(`Running strategy: ${strategy.name}`);
-                const strategySelectors = strategy.fn();
-                if (debugMode) console.log(`Strategy ${strategy.name} generated:`, strategySelectors?.length || 0, 'selectors');
-                
+                const strategySelectors = strategy();
                 if (strategySelectors && Array.isArray(strategySelectors)) {
                     allScoredSelectors.push(...strategySelectors);
-                    if (debugMode && strategySelectors.length > 0) {
-                        console.log(`Best from ${strategy.name}:`, strategySelectors[0]);
-                    }
                 }
                 
                 // Early exit if we have enough high-scoring selectors
@@ -1258,14 +1179,9 @@ function generateEnhancedSelectors(element) {
                     break;
                 }
             } catch (strategyError) {
-                if (debugMode) console.warn(`Strategy ${strategy.name} failed:`, strategyError);
+                if (debugMode) console.warn('Strategy failed:', strategyError);
                 continue;
             }
-        }
-        
-        if (debugMode) {
-            console.log('All scored selectors before sorting:', allScoredSelectors.length);
-            console.log('Sample scored selectors:', allScoredSelectors.slice(0, 3));
         }
         
         // Sort by score and extract selectors
@@ -1275,19 +1191,17 @@ function generateEnhancedSelectors(element) {
             .filter((selector, index, arr) => selector && arr.indexOf(selector) === index) // Remove duplicates
             .slice(0, PERFORMANCE_LIMITS.maxAlternatives);
 
-        if (debugMode) {
-            console.log('Final selectors after processing:', finalSelectors.length);
-            console.log('Final selectors:', finalSelectors.slice(0, 5));
-        }
-
-        // --- Selector Reduction ---
+        // --- NEW: Apply Selector Reduction ---
         if (finalSelectors.length > 0) {
             const reducedBestSelector = reduceSelector(finalSelectors[0], isXPathUnique);
+            // Replace the best selector with its reduced version if different
             if (reducedBestSelector !== finalSelectors[0]) {
-                finalSelectors.unshift(reducedBestSelector);
+                finalSelectors.unshift(reducedBestSelector); // Add to the front
             }
         }
+        // Ensure final list is still unique after potential additions
         finalSelectors = [...new Set(finalSelectors)]; 
+        // --- END OF NEW CODE ---
         
         const endTime = performance.now();
         if (debugMode) {
@@ -1302,43 +1216,19 @@ function generateEnhancedSelectors(element) {
                 alternatives: finalSelectors
             };
         } else {
-            if (debugMode) {
-                console.error('CRITICAL: No selectors generated despite having strategies');
-                console.log('Element details for debugging:');
-                console.log('- tagName:', tagName);
-                console.log('- isConnected:', element.isConnected);
-                console.log('- parentElement:', element.parentElement);
-                console.log('- textContent length:', element.textContent?.length || 0);
-                console.log('- All strategies ran:', strategies.length);
-            }
             throw new Error('No alternatives generated');
         }
         
     } catch (error) {
+
         if (debugMode) console.warn('Enhanced selector generation failed:', error);
-        throw error;
+        throw error; // Re-throw to trigger fallback
     }
 }
 
 // --- Simple Structural Fallback ---
 function generateSimpleStructuralFallback(element) {
-    if (debugMode) {
-        console.log('=== FALLBACK: Generating simple structural fallback ===');
-        console.log('Element:', element);
-        console.log('Element tagName:', element?.tagName);
-        console.log('Element isConnected:', element?.isConnected);
-    }
-    
-    // Safety checks
-    if (!element) {
-        console.error('FALLBACK ERROR: Element is null/undefined');
-        return { best: '//body', alternatives: ['//body'] };
-    }
-    
-    if (!element.tagName) {
-        console.error('FALLBACK ERROR: Element has no tagName');
-        return { best: '//body', alternatives: ['//body'] };
-    }
+    if (debugMode) console.log('Generating simple structural fallback for:', element);
     
     const alternatives = [];
     let current = element;
@@ -1348,12 +1238,6 @@ function generateSimpleStructuralFallback(element) {
     while (current && current.parentElement && pathSegments.length < 5) {
         const tagName = current.tagName.toLowerCase();
         const parent = current.parentElement;
-        
-        if (!parent.children) {
-            if (debugMode) console.warn('Parent has no children property, breaking');
-            break;
-        }
-        
         const siblings = Array.from(parent.children);
         const index = siblings.indexOf(current) + 1;
         const tagSiblings = siblings.filter(s => s.tagName.toLowerCase() === tagName);
@@ -1364,7 +1248,7 @@ function generateSimpleStructuralFallback(element) {
         // Tag with same-type index if multiple of same tag
         if (tagSiblings.length > 1) {
             const tagIndex = tagSiblings.indexOf(current) + 1;
-            if (tagIndex !== index && tagIndex > 0) {
+            if (tagIndex !== index && tagIndex > 0) { // Only add if different from basic position and valid
                 pathSegments.unshift(`${tagName}[${tagIndex}]`);
             }
         }
@@ -1374,8 +1258,10 @@ function generateSimpleStructuralFallback(element) {
     
     // Generate variants
     if (pathSegments.length > 0) {
+        // Full path
         alternatives.push(`//${pathSegments.join('/')}`);
         
+        // Shortened paths
         if (pathSegments.length > 2) {
             alternatives.push(`//${pathSegments.slice(-2).join('/')}`);
         }
@@ -1386,45 +1272,60 @@ function generateSimpleStructuralFallback(element) {
     
     // Tag-only with global index
     const tagName = element.tagName.toLowerCase();
-    try {
-        const allSameTag = Array.from(document.querySelectorAll(tagName));
-        const globalIndex = allSameTag.indexOf(element) + 1;
-        if (globalIndex > 0) {
-            alternatives.push(`//${tagName}[${globalIndex}]`);
+    const allSameTag = Array.from(document.querySelectorAll(tagName));
+    const globalIndex = allSameTag.indexOf(element) + 1;
+    if (globalIndex > 0) {
+        alternatives.push(`//${tagName}[${globalIndex}]`);
+    }
+    
+    // Container + attribute hints
+    const parent = element.parentElement;
+    if (parent) {
+        const parentClasses = getSemanticClasses(parent);
+        if (parentClasses.length > 0) {
+            alternatives.push(`//${parent.tagName.toLowerCase()}[contains(@class, '${parentClasses[0]}')]//${tagName}`);
         }
-    } catch (e) {
-        if (debugMode) console.warn('Failed to query all same tag elements:', e);
-    }
-    
-    // Basic attributes
-    if (element.id) {
-        alternatives.push(`//${tagName}[@id='${element.id}']`);
-    }
-    
-    if (element.className && typeof element.className === 'string') {
-        const firstClass = element.className.split(' ')[0];
-        if (firstClass) {
-            alternatives.push(`//${tagName}[contains(@class, '${firstClass}')]`);
+        
+        // With attribute hints
+        const href = element.getAttribute('href');
+        if (href && href.length > 5) {
+            const hintText = href.substring(href.lastIndexOf('/') + 1).split('.')[0];
+            if (hintText) {
+                alternatives.push(`//${tagName}[contains(@href, '${hintText}')]`);
+            }
+        }
+        
+        // With other useful attributes
+        const id = element.id;
+        if (id) {
+            alternatives.push(`//${tagName}[@id='${id}']`);
+        }
+        
+        const className = element.className;
+        if (className && typeof className === 'string') {
+            const firstClass = className.split(' ')[0];
+            if (firstClass) {
+                alternatives.push(`//${tagName}[contains(@class, '${firstClass}')]`);
+            }
         }
     }
     
-    // Ultimate fallback
+    // Fallback with just tag name
     if (alternatives.length === 0) {
         alternatives.push(`//${tagName}`);
     }
     
+    // Remove duplicates and limit
     const uniqueAlternatives = [...new Set(alternatives)].slice(0, 10);
     
-    if (debugMode) {
-        console.log('Fallback generated:', uniqueAlternatives.length, 'alternatives');
-        console.log('Fallback alternatives:', uniqueAlternatives);
-    }
+    if (debugMode) console.log('Fallback alternatives:', uniqueAlternatives);
     
     return {
-        best: uniqueAlternatives[0] || `//${tagName}`,
-        alternatives: uniqueAlternatives.length > 0 ? uniqueAlternatives : [`//${tagName}`]
+        best: uniqueAlternatives[0] || `//${element.tagName.toLowerCase()}`,
+        alternatives: uniqueAlternatives.length > 0 ? uniqueAlternatives : [`//${element.tagName.toLowerCase()}`]
     };
 }
+
 // --- Wrapper function for backward compatibility ---
 function generateSelectors(element) {
     if (debugMode) {
@@ -1698,66 +1599,24 @@ function handleScroll() {
 
 // --- EVENT LISTENERS ---
 
-// Store listener references for cleanup
-function addConditionalListener(element, event, handler, options) {
-    const listenerInfo = { element, event, handler, options };
-    eventListeners.push(listenerInfo);
-    
-    // Only add if recording is active
-    if (isRecording) {
-        element.addEventListener(event, handler, options);
+document.addEventListener('mousedown', (e) => {
+    if (e.button === 2) {
+        lastRightClickedElement = e.target;
     }
-}
+}, true);
 
-function startRecordingListeners() {
-    if (isRecording) return; // Already started
-    
-    isRecording = true;
-    if (debugMode) console.log('Starting recording listeners');
-    
-    // Add all stored listeners
-    eventListeners.forEach(({ element, event, handler, options }) => {
-        element.addEventListener(event, handler, options);
-    });
-}
+// In content.js, replace the entire 'document.addEventListener('click', ...)' function with this one.
 
+// In content.js, replace the entire click listener with this one.
 
-function stopRecordingListeners() {
-    if (!isRecording) return; // Already stopped
-    
-    isRecording = false;
-    if (debugMode) console.log('Stopping recording listeners');
-    
-    // Remove all stored listeners
-    eventListeners.forEach(({ element, event, handler, options }) => {
-        element.removeEventListener(event, handler, options);
-    });
-    
-    // Clear any pending state
-    flushShadowDomBuffer();
-    
-    // Clear other state variables
-    lastTypedElement = null;
-    lastRightClickedElement = null;
-    pickerMode = { isActive: false, action: '' };
-    iframeInteractionDetected = false;
-}
-
-
-// Modified event handlers that check recording state
-const clickHandler = (e) => {
-    if (!isRecording) return;
-    
+document.addEventListener('click', (e) => {
     let target = e.composedPath()[0] || e.target;
-    console.log('🔵 CLICK DETECTED:', target.tagName, target.href || target.textContent?.substring(0, 50));
 
     // Ignore clicks on <select> and <option> elements, as the 'change' event is now the source of truth.
-    if ((target.tagName === 'SELECT' || target.closest('option')) && 
-        !(target.getRootNode() instanceof ShadowRoot)) {
-         if (debugMode) console.log('Ignoring click on regular select/option element; handled by change event.');
-         return; // Don't record, but don't prevent default - let browser handle it
+    if (target.tagName === 'SELECT' || target.closest('option')) {
+         if (debugMode) console.log('Ignoring click on select/option element; handled by change event.');
+         return;
     }
-
 
     if (pickerMode.isActive) {
         e.preventDefault();
@@ -1788,26 +1647,14 @@ const clickHandler = (e) => {
     flushShadowDomBuffer();
     const clickAction = createAction('click', target);
     chrome.runtime.sendMessage({ type: 'recorded_action', action: clickAction });
-    console.log('🟢 CLICK ACTION SENT:', clickAction);
+}, true);
 
-};
-
-const blurHandler = (e) => {
-    if (!isRecording) return;
-    
+document.addEventListener('blur', (e) => {
     const target = e.composedPath()[0] || e.target;
-
-    // Completely ignore custom dropdown components (role="combobox")
-    if (target.getAttribute('role') === 'combobox') {
-        if (debugMode) console.log("Ignoring 'blur' event on custom dropdown component.");
-        return;
-    }
-
-    // Only handle actual text inputs/textareas in Shadow DOM, NOT comboboxes
-    if ((target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') && 
-        target.getRootNode() instanceof ShadowRoot &&
-        target.getAttribute('role') !== 'combobox') {
-        
+    
+    
+    // Existing blur logic
+    if ((target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') && target.getRootNode() instanceof ShadowRoot) {
         isInShadowDomMode = true;
         const host = target.getRootNode().host;
         const hostXPath = generateSelectors(host).best.replace(/`/g, '\\`');
@@ -1818,42 +1665,80 @@ const blurHandler = (e) => {
         const source = `const host${shadowDomActionBuffer.length} = document.evaluate(\`${hostXPath}\`, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue; if (host${shadowDomActionBuffer.length} && host${shadowDomActionBuffer.length}.shadowRoot) { const input = host${shadowDomActionBuffer.length}.shadowRoot.querySelector(\`${innerSelector}\`); if (input) { input.value = \`${valueToSet}\`; input.dispatchEvent(new Event('input', { bubbles: true })); input.dispatchEvent(new Event('change', { bubbles: true })); } }`;
         shadowDomActionBuffer.push(source.replace(/\s+/g, ' ').trim());
     }
-};
+}, true);
 
-const changeHandler = (e) => {
-    if (!isRecording) return;
-    
+document.addEventListener('dblclick', (e) => {
+    flushShadowDomBuffer();
+    const action = createAction('doubleClick', e.target);
+    chrome.runtime.sendMessage({ type: 'recorded_action', action: action });
+}, true);
+
+document.addEventListener('change', (e) => {
     const target = e.composedPath()[0] || e.target;
     const tagName = target.tagName.toLowerCase();
 
-    // Only handle regular DOM select elements with the new approach
-    if (tagName === 'select' && !(target.getRootNode() instanceof ShadowRoot)) {
+    // First, check if the event target is a <select> element.
+    if (tagName === 'select') {
         const selectedValues = Array.from(target.selectedOptions).map(opt => opt.value);
-        if (selectedValues.length === 0) return;
+        if (selectedValues.length === 0) {
+            return; // No value selected, do nothing.
+        }
 
-        if (debugMode) console.log("'change' event on a standard <select> detected:", target);
-        flushShadowDomBuffer(); 
-        
-        const selectors = generateSelectors(target);
-        const state = isElementHidden(target) ? "attached" : "visible";
-        const selectAction = {
-            action: 'select',
-            selector: { type: 'xpath', state: state, current: selectors.best, alternatives: selectors.alternatives },
-            values: selectedValues,
-            onError: 'return'
-        };
-        chrome.runtime.sendMessage({ type: 'recorded_action', action: selectAction });
+        // Now, determine if it's a Shadow DOM select or a standard one.
+        if (target.getRootNode() instanceof ShadowRoot) {
+            // --- HANDLE SHADOW DOM SELECT ---
+            // This is a Shadow DOM select. Add the action to the buffer.
+            if (debugMode) console.log("'change' event on a SHADOW DOM <select> detected. Buffering action.");
+
+            isInShadowDomMode = true; // Ensure we are in buffering mode.
+
+            const host = target.getRootNode().host;
+            const hostXPath = generateSelectors(host).best.replace(/`/g, '\\`');
+            const innerSelector = generateCssSelectorForShadow(target);
+            const valueToSet = selectedValues[0].replace(/`/g, '\\`');
+
+            // Construct the javascript code to be added to the buffer
+            const source = `
+                const host = document.evaluate(\`${hostXPath}\`, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
+                if (host && host.shadowRoot) {
+                    const selectElement = host.shadowRoot.querySelector(\`${innerSelector}\`);
+                    if (selectElement) {
+                        selectElement.value = \`${valueToSet}\`;
+                        selectElement.dispatchEvent(new Event('input', { bubbles: true }));
+                        selectElement.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                }
+            `.replace(/\s+/g, ' ').trim();
+
+            shadowDomActionBuffer.push(source);
+
+        } else {
+            // --- HANDLE STANDARD DOM SELECT ---
+            // This is a standard select. Flush any previous buffer and send the action immediately.
+            if (debugMode) console.log("'change' event on a standard <select> detected:", target);
+            flushShadowDomBuffer(); 
+            
+            const selectors = generateSelectors(target);
+            const state = isElementHidden(target) ? "attached" : "visible";
+            const selectAction = {
+                action: 'select',
+                selector: { type: 'xpath', state: state, current: selectors.best, alternatives: selectors.alternatives },
+                values: selectedValues,
+                onError: 'return'
+            };
+            chrome.runtime.sendMessage({ type: 'recorded_action', action: selectAction });
+        }
+
+        e.stopPropagation();
         return;
     }
 
-    // Shadow DOM selects - ignore, handled by blur listener
-    if (tagName === 'select' && target.getRootNode() instanceof ShadowRoot) {
-        if (debugMode) console.log("'change' event on Shadow DOM <select> - ignoring, will be handled by blur listener");
+    // This logic handles other input types like <input> and <textarea>
+    if (target.getRootNode() instanceof ShadowRoot || target.offsetParent === null) {
+        // This is handled by the 'blur' listener for text inputs in Shadow DOM, so we can ignore it here.
         return;
     }
-
-    // Handle other input types
-    if (target.getRootNode() instanceof ShadowRoot || target.offsetParent === null) return;
+    
     if (target === lastTypedElement) {
         lastTypedElement = null;
         return;
@@ -1867,18 +1752,13 @@ const changeHandler = (e) => {
     if (action) {
         chrome.runtime.sendMessage({ type: 'recorded_action', action: action });
     }
-};
-const dblclickHandler = (e) => {
-    if (!isRecording) return;
-    
-    flushShadowDomBuffer();
-    const action = createAction('doubleClick', e.target);
-    chrome.runtime.sendMessage({ type: 'recorded_action', action: action });
-};
+}, true);
 
-const keydownHandler = (e) => {
-    if (!isRecording) return;
+
+document.addEventListener('keydown', (e) => {
+    // Clear select state on keydown in non-select elements
     
+    // Existing keydown logic
     const target = e.target;
     const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA';
     const nonCharKeys = ['Enter', 'Tab', 'Escape', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
@@ -1897,58 +1777,18 @@ const keydownHandler = (e) => {
         const action = { action: 'keyPress', key: e.key, onError: 'return' };
         chrome.runtime.sendMessage({ type: 'recorded_action', action: action });
     }
-};
+}, true);
 
-const mousedownHandler = (e) => {
-    if (!isRecording) return;
-    
-    if (e.button === 2) {
-        lastRightClickedElement = e.target;
-    }
-};
+document.addEventListener('scroll', handleScroll, true);
 
-const scrollHandler = () => {
-    if (!isRecording) return;
-    
-    clearTimeout(scrollTimeout);
-    scrollTimeout = setTimeout(() => {
-        const el = document.documentElement;
-        if (el.scrollHeight - el.scrollTop <= el.clientHeight + 1) {
-            const delay = settings?.scrollDelay || 1000;
-            setTimeout(() => {
-                if (el.scrollHeight - el.scrollTop <= el.clientHeight + 1) {
-                    flushShadowDomBuffer();
-                    chrome.runtime.sendMessage({ type: 'recorded_action', action: { action: 'scrollBottom' } });
-                }
-            }, delay);
-        }
-    }, 500);
-};
-
-const beforeunloadHandler = () => {
-    if (!isRecording) return;
+window.addEventListener('beforeunload', () => {
     flushShadowDomBuffer();
-};
+});
 
-// Register all listeners (but don't activate them yet)
-addConditionalListener(document, 'click', clickHandler, true);
-addConditionalListener(document, 'blur', blurHandler, true);
-addConditionalListener(document, 'change', changeHandler, true);
-addConditionalListener(document, 'dblclick', dblclickHandler, true);
-addConditionalListener(document, 'keydown', keydownHandler, true);
-addConditionalListener(document, 'mousedown', mousedownHandler, true);
-addConditionalListener(document, 'scroll', scrollHandler, true);
-addConditionalListener(window, 'beforeunload', beforeunloadHandler);
-
-// Enhanced message listener
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.type === 'start_recording') {
-        startRecordingListeners();
-        sendResponse({ status: 'recording_started' });
-    } else if (message.type === 'stop_recording') {
-        stopRecordingListeners();
-        sendResponse({ status: 'recording_stopped' });
-    } else if (message.type === 'start_element_picker') {
+    if (message.type === 'start_element_picker') {
+        // Clear select state when starting picker mode
+        
         flushShadowDomBuffer();
         pickerMode.isActive = true;
         pickerMode.action = message.action;
@@ -1974,6 +1814,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         flushShadowDomBuffer();
         sendResponse({ status: 'flushed' });
     } else if (message.type === 'flush_before_navigation') {
+        // Clear select state before navigation
         flushShadowDomBuffer();
         sendResponse({ status: 'flushed' });
     }
