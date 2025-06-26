@@ -19,7 +19,19 @@ let settings = null;
 // --- Performance and debug state ---
 let debugMode = false;
 
+// Recovery and listener management state
+let recoveryState = {
+    attempts: 0,
+    maxAttempts: 3,
+    lastAttempt: 0,
+    debounceDelay: 5000, // 5 seconds
+    isRecovering: false
+};
 
+let listenerState = {
+    areListenersActive: false,
+    lastListenerSetup: 0
+};
 
 // Enhanced default settings with new performance options
 const ENHANCED_DEFAULT_SETTINGS = {
@@ -121,6 +133,211 @@ settings = ENHANCED_DEFAULT_SETTINGS; // Set immediately as fallback
 debugMode = false;
 loadSettings(); // Then load from storage
 
+
+// Re-injection detection and state recovery
+function detectExistingInjection() {
+    // Check for existing injection marker
+    if (window.__ZYTE_RECORDER_INJECTED__) {
+        console.log('🔍 Existing content script injection detected');
+        return true;
+    }
+    
+    // Check for working event listeners (capability check)
+    try {
+        const testElement = document.createElement('div');
+        let hasWorkingListeners = false;
+        
+        const testHandler = () => { hasWorkingListeners = true; };
+        testElement.addEventListener('click', testHandler);
+        testElement.dispatchEvent(new Event('click'));
+        testElement.removeEventListener('click', testHandler);
+        
+        if (hasWorkingListeners && eventListeners.length > 0) {
+            console.log('🔍 Working event listeners detected');
+            return true;
+        }
+    } catch (error) {
+        console.warn('🔍 Capability check failed:', error);
+    }
+    
+    return false;
+}
+
+function markInjection() {
+    window.__ZYTE_RECORDER_INJECTED__ = {
+        timestamp: Date.now(),
+        version: '1.0.0',
+        tabId: chrome.runtime?.id || 'unknown'
+    };
+    console.log('✅ Content script injection marked');
+}
+
+async function validatePageContext() {
+    try {
+        // Basic checks
+        if (!document.body || !document.documentElement) {
+            return false;
+        }
+        
+        // Check if page has meaningful content
+        const hasContent = document.body.children.length > 0;
+        
+        // Check if DOM is accessible
+        const isDomAccessible = document.readyState !== 'loading';
+        
+        const isValid = hasContent && isDomAccessible;
+        console.log('🔍 Page context validation:', { hasContent, isDomAccessible, isValid });
+        
+        return isValid;
+    } catch (error) {
+        console.warn('🔍 Page context validation failed:', error);
+        return false;
+    }
+}
+
+async function recoverRecordingState() {
+    const now = Date.now();
+    
+    // Check if we're already recovering
+    if (recoveryState.isRecovering) {
+        if (debugMode) console.log('🔄 Recovery already in progress, skipping');
+        return false;
+    }
+    
+    // Check debounce delay
+    if (now - recoveryState.lastAttempt < recoveryState.debounceDelay) {
+        if (debugMode) console.log('🔄 Recovery debounced, too recent');
+        return false;
+    }
+    
+    // Check max attempts
+    if (recoveryState.attempts >= recoveryState.maxAttempts) {
+        if (debugMode) console.log('🔄 Max recovery attempts reached for this page');
+        return false;
+    }
+    
+    recoveryState.isRecovering = true;
+    recoveryState.attempts++;
+    recoveryState.lastAttempt = now;
+    
+    try {
+        if (debugMode) console.log(`🔄 Attempting recording state recovery (${recoveryState.attempts}/${recoveryState.maxAttempts})...`);
+        
+        // Validate page context first
+        const isValidContext = await validatePageContext();
+        if (!isValidContext) {
+            if (debugMode) console.warn('🔄 Invalid page context, skipping recovery');
+            return false;
+        }
+        
+        // Check current recording state
+        const response = await new Promise((resolve) => {
+            chrome.runtime.sendMessage({ type: 'get_recording_state' }, (response) => {
+                if (chrome.runtime.lastError) {
+                    if (debugMode) console.warn('🔄 Could not get recording state:', chrome.runtime.lastError.message);
+                    resolve({ isRecording: false });
+                } else {
+                    resolve(response || { isRecording: false });
+                }
+            });
+        });
+        
+        if (response.isRecording) {
+            // Only restart listeners if they're not already active
+            if (!listenerState.areListenersActive) {
+                if (debugMode) console.log('🔄 Recording state recovered - restarting listeners');
+                startRecordingListeners();
+                showRecordingResumedNotification();
+                
+                // Reset recovery attempts on successful recovery
+                recoveryState.attempts = 0;
+                return true;
+            } else {
+                if (debugMode) console.log('🔄 Recording state confirmed - listeners already active');
+                return true;
+            }
+        } else {
+            if (debugMode) console.log('🔄 No active recording to recover');
+            return false;
+        }
+        
+    } catch (error) {
+        if (debugMode) console.error('🔄 Recording state recovery failed:', error);
+        return false;
+    } finally {
+        recoveryState.isRecovering = false;
+    }
+}
+
+function showRecordingResumedNotification() {
+    // // Don't show toast if we're in a DevTools context or if panel might be open
+    // // This prevents duplicate toasts when panel shows its own notification
+    // if (window.location.protocol === 'devtools:' || 
+    //     window.chrome?.devtools || 
+    //     document.querySelector('[data-devtools-panel]')) {
+    //     if (debugMode) console.log('🔄 Skipping toast - likely in DevTools context');
+    //     return;
+    // }
+    
+    // // Create toast notification
+    // const toast = document.createElement('div');
+    // toast.id = 'zyte-recorder-toast';
+    // toast.style.cssText = `
+    //     position: fixed;
+    //     top: 20px;
+    //     right: 20px;
+    //     background: #10b981;
+    //     color: white;
+    //     padding: 12px 20px;
+    //     border-radius: 8px;
+    //     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    //     font-size: 14px;
+    //     font-weight: 500;
+    //     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    //     z-index: 10000;
+    //     opacity: 0;
+    //     transform: translateX(100%);
+    //     transition: all 0.3s ease;
+    //     pointer-events: none;
+    // `;
+    // toast.textContent = '🔄 Recording Resumed';
+    
+    // document.body.appendChild(toast);
+    
+    // // Animate in
+    // setTimeout(() => {
+    //     toast.style.opacity = '1';
+    //     toast.style.transform = 'translateX(0)';
+    // }, 100);
+    
+    // // Animate out and remove after 3 seconds
+    // setTimeout(() => {
+    //     toast.style.opacity = '0';
+    //     toast.style.transform = 'translateX(100%)';
+        
+    //     setTimeout(() => {
+    //         if (toast.parentNode) {
+    //             toast.parentNode.removeChild(toast);
+    //         }
+    //     }, 300);
+    // }, 3000);
+
+    if (debugMode) console.log('🔄 Recording resumed (toast handled by panel)');
+    return;
+
+}
+
+
+// NEW: Reset recovery state (call on page navigation or explicit recording start/stop)
+function resetRecoveryState() {
+    recoveryState.attempts = 0;
+    recoveryState.lastAttempt = 0;
+    recoveryState.isRecovering = false;
+    
+    if (debugMode) console.log('🔄 Recovery state reset');
+}
+
+
 let isRecording = false;
 let eventListeners = [];
 
@@ -150,32 +367,51 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
 // Replace the syncRecordingState function with this more robust version:
 
 // Sync recording state on page load/reload with retry mechanism
+// Enhanced sync with recovery logic
+// Enhanced sync with better debouncing
 function syncRecordingState(retryCount = 0) {
     const maxRetries = 3;
-    const retryDelay = 1000; // 1 second
+    const retryDelay = 1000;
     
-    if (debugMode) console.log(`Attempting to sync recording state (attempt ${retryCount + 1})`);
+    if (debugMode) console.log(`🔄 Attempting to sync recording state (attempt ${retryCount + 1})`);
+    
+    // Check for existing injection first
+    if (detectExistingInjection() && retryCount === 0) {
+        if (debugMode) console.log('🔄 Content script already injected, attempting state recovery...');
+        // Use debounced recovery
+        setTimeout(() => {
+            recoverRecordingState();
+        }, 500);
+        return;
+    }
     
     chrome.runtime.sendMessage({ type: 'get_recording_state' }, (response) => {
         if (chrome.runtime.lastError) {
-            if (debugMode) console.warn('Could not get recording state:', chrome.runtime.lastError.message);
+            if (debugMode) console.warn('🔄 Could not get recording state:', chrome.runtime.lastError.message);
             
             // Retry if we haven't exceeded max retries
             if (retryCount < maxRetries) {
-                if (debugMode) console.log(`Retrying in ${retryDelay}ms...`);
+                if (debugMode) console.log(`🔄 Retrying in ${retryDelay}ms...`);
                 setTimeout(() => syncRecordingState(retryCount + 1), retryDelay);
             } else {
-                if (debugMode) console.log('Max retries reached - assuming recording is not active');
+                if (debugMode) console.log('🔄 Max retries reached - assuming recording is not active');
+                markInjection(); // Mark injection even if sync failed
             }
             return;
         }
         
         if (response && response.isRecording) {
-            if (debugMode) console.log('Page loaded - resuming recording from background state');
+            if (debugMode) console.log('🔄 Page loaded - resuming recording from background state');
             startRecordingListeners();
+            showRecordingResumedNotification();
+            
+            // Reset recovery attempts on successful sync
+            recoveryState.attempts = 0;
         } else {
-            if (debugMode) console.log('Page loaded - recording not active');
+            if (debugMode) console.log('🔄 Page loaded - recording not active');
         }
+        
+        markInjection(); // Mark successful injection
     });
 }
 
@@ -1720,28 +1956,49 @@ function addConditionalListener(element, event, handler, options) {
 }
 
 function startRecordingListeners() {
-    if (isRecording) return; // Already started
+    // Prevent duplicate listener setup
+    const now = Date.now();
+    if (listenerState.areListenersActive && (now - listenerState.lastListenerSetup) < 1000) {
+        if (debugMode) console.log('🔒 Preventing duplicate listener setup (too recent)');
+        return;
+    }
     
-    isRecording = true;
-    if (debugMode) console.log('Starting recording listeners');
+    // Remove existing listeners first
+    if (listenerState.areListenersActive) {
+        if (debugMode) console.log('🔄 Removing existing listeners before adding new ones');
+        removeEventListeners();
+    }
+    
+    if (debugMode) console.log('▶️ Starting recording listeners');
     
     // Add all stored listeners
     eventListeners.forEach(({ element, event, handler, options }) => {
-        element.addEventListener(event, handler, options);
+        try {
+            element.addEventListener(event, handler, options);
+        } catch (error) {
+            if (debugMode) console.warn('Failed to add event listener:', error);
+        }
     });
+    
+    // Update state
+    isRecording = true;
+    listenerState.areListenersActive = true;
+    listenerState.lastListenerSetup = now;
+    
+    if (debugMode) console.log('✅ Recording listeners started');
 }
 
 
 function stopRecordingListeners() {
-    if (!isRecording) return; // Already stopped
+    if (!listenerState.areListenersActive) {
+        if (debugMode) console.log('⏹️ Recording listeners already stopped');
+        return;
+    }
     
-    isRecording = false;
-    if (debugMode) console.log('Stopping recording listeners');
+    if (debugMode) console.log('⏹️ Stopping recording listeners');
     
-    // Remove all stored listeners
-    eventListeners.forEach(({ element, event, handler, options }) => {
-        element.removeEventListener(event, handler, options);
-    });
+    // Remove listeners and clear state
+    removeEventListeners();
     
     // Clear any pending state
     flushShadowDomBuffer();
@@ -1751,6 +2008,38 @@ function stopRecordingListeners() {
     lastRightClickedElement = null;
     pickerMode = { isActive: false, action: '' };
     iframeInteractionDetected = false;
+    
+    if (debugMode) console.log('✅ Recording listeners stopped');
+}
+
+// NEW: Enhanced event listener cleanup
+function removeEventListeners() {
+    if (!listenerState.areListenersActive) {
+        if (debugMode) console.log('🧹 Event listeners already removed or never added');
+        return;
+    }
+    
+    if (debugMode) console.log('🧹 Removing event listeners...');
+    
+    // Remove all stored listeners
+    eventListeners.forEach(({ element, event, handler, options }) => {
+        try {
+            element.removeEventListener(event, handler, options);
+        } catch (error) {
+            if (debugMode) console.warn('Failed to remove event listener:', error);
+        }
+    });
+    
+    // Clear any pending timeouts
+    if (scrollTimeout) {
+        clearTimeout(scrollTimeout);
+        scrollTimeout = null;
+    }
+    
+    listenerState.areListenersActive = false;
+    isRecording = false;
+    
+    if (debugMode) console.log('✅ Event listeners removed');
 }
 
 
@@ -1951,13 +2240,42 @@ addConditionalListener(document, 'scroll', scrollHandler, true);
 addConditionalListener(window, 'beforeunload', beforeunloadHandler);
 
 // Enhanced message listener
+// Enhanced message listener with better error handling
+// Enhanced message listener with better error handling
+// Enhanced message listener with better state management
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    // Add timeout handling for async responses
+    let responseTimeout;
+    let responseSent = false;
+    
+    const sendTimedResponse = (response) => {
+        if (!responseSent && responseTimeout) {
+            clearTimeout(responseTimeout);
+            responseTimeout = null;
+            responseSent = true;
+            sendResponse(response);
+        }
+    };
+    
+    // Set 5-second timeout for async responses
+    if (['start_recording', 'stop_recording', 'flush_buffer', 'flush_before_navigation'].includes(message.type)) {
+        responseTimeout = setTimeout(() => {
+            if (!responseSent) {
+                console.warn(`⏰ Response timeout for message type: ${message.type}`);
+                sendTimedResponse({ status: 'timeout', type: message.type });
+            }
+        }, 5000);
+    }
+    
     if (message.type === 'start_recording') {
+        resetRecoveryState(); // Reset recovery state on explicit start
         startRecordingListeners();
-        sendResponse({ status: 'recording_started' });
+        markInjection();
+        sendTimedResponse({ status: 'recording_started' });
     } else if (message.type === 'stop_recording') {
+        resetRecoveryState(); // Reset recovery state on explicit stop
         stopRecordingListeners();
-        sendResponse({ status: 'recording_stopped' });
+        sendTimedResponse({ status: 'recording_stopped' });
     } else if (message.type === 'start_element_picker') {
         flushShadowDomBuffer();
         pickerMode.isActive = true;
@@ -1971,21 +2289,214 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             }
         };
         document.addEventListener('keydown', escapeListener);
+        if (responseTimeout) sendTimedResponse({ status: 'picker_started' });
     } else if (message.type === 'get_scroll_position') {
-        sendResponse({ x: window.scrollX, y: window.scrollY });
+        if (!responseSent) sendResponse({ x: window.scrollX, y: window.scrollY });
     } else if (message.type === 'get_xpath_for_last_right_clicked_element') {
         if (lastRightClickedElement) {
             const selectors = generateSelectors(lastRightClickedElement);
-            sendResponse({ xpath: selectors.best });
+            if (!responseSent) sendResponse({ xpath: selectors.best });
         } else {
-            sendResponse({ xpath: null });
+            if (!responseSent) sendResponse({ xpath: null });
         }
     } else if (message.type === 'flush_buffer') {
         flushShadowDomBuffer();
-        sendResponse({ status: 'flushed' });
+        sendTimedResponse({ status: 'flushed' });
     } else if (message.type === 'flush_before_navigation') {
         flushShadowDomBuffer();
-        sendResponse({ status: 'flushed' });
+        sendTimedResponse({ status: 'flushed' });
+    } else {
+        // For messages that don't need async response, clear timeout
+        if (responseTimeout) {
+            clearTimeout(responseTimeout);
+            responseTimeout = null;
+        }
     }
-    return true;
+    
+    return true; // Keep message channel open for async responses
+});
+
+// Enhanced navigation and page lifecycle handling
+// Enhanced navigation and page lifecycle handling with recovery state management
+// Enhanced navigation and page lifecycle handling with better throttling
+let visibilityChangeTimeout = null;
+let lastVisibilityChange = 0;
+
+document.addEventListener('visibilitychange', () => {
+    const now = Date.now();
+    
+    if (debugMode) {
+        console.log('🔄 Page visibility changed:', {
+            hidden: document.hidden,
+            visibilityState: document.visibilityState,
+            isRecording: isRecording,
+            areListenersActive: listenerState.areListenersActive
+        });
+    }
+    
+    // Throttle visibility change handling
+    if (now - lastVisibilityChange < 2000) {
+        if (debugMode) console.log('🔄 Visibility change throttled');
+        return;
+    }
+    
+    lastVisibilityChange = now;
+    
+    // Clear any pending visibility change recovery
+    if (visibilityChangeTimeout) {
+        clearTimeout(visibilityChangeTimeout);
+    }
+    
+    // If page becomes visible and we lost recording state, try to recover (throttled)
+    if (!document.hidden && !listenerState.areListenersActive) {
+        visibilityChangeTimeout = setTimeout(() => {
+            // Double-check conditions before recovery
+            if (!document.hidden && !listenerState.areListenersActive && !recoveryState.isRecovering) {
+                recoverRecordingState();
+            }
+        }, 2000); // Increased delay for stability
+    }
+});
+
+// Enhanced page freeze/resume detection with better throttling
+let lastHeartbeat = Date.now();
+let freezeDetectionCount = 0;
+const maxFreezeRecoveries = 2; // Max recoveries per page load due to freeze
+
+setInterval(() => {
+    const now = Date.now();
+    const gap = now - lastHeartbeat;
+    
+    if (gap > 10000) { // Increased threshold to 10 seconds to reduce false positives
+        freezeDetectionCount++;
+        
+        if (debugMode) {
+            console.log(`⏰ Potential page freeze detected (${freezeDetectionCount}/${maxFreezeRecoveries}), gap:`, gap + 'ms');
+        }
+        
+        // Only attempt recovery if we haven't exceeded max freeze recoveries
+        if (freezeDetectionCount <= maxFreezeRecoveries && !recoveryState.isRecovering) {
+            setTimeout(() => {
+                // Double-check conditions before recovery
+                if (!listenerState.areListenersActive && !recoveryState.isRecovering) {
+                    recoverRecordingState();
+                }
+            }, 3000); // Increased delay
+        } else if (freezeDetectionCount > maxFreezeRecoveries) {
+            if (debugMode) console.log('⏰ Max freeze recoveries reached, skipping recovery');
+        }
+    }
+    
+    lastHeartbeat = now;
+}, 3000); // Reduced frequency to every 3 seconds
+
+// Enhanced beforeunload handling with state cleanup
+// Enhanced beforeunload handling with state cleanup
+// Enhanced beforeunload handling with state cleanup
+window.addEventListener('beforeunload', () => {
+    if (debugMode) console.log('🚨 NAVIGATION DETECTED - beforeunload');
+    
+    // Clean up state before navigation
+    flushShadowDomBuffer();
+    resetRecoveryState();
+    
+    // Reset freeze detection count
+    freezeDetectionCount = 0;
+    lastVisibilityChange = 0;
+    
+    // Clear any pending timeouts
+    if (visibilityChangeTimeout) {
+        clearTimeout(visibilityChangeTimeout);
+        visibilityChangeTimeout = null;
+    }
+    
+    // Clear injection marker on navigation
+    if (window.__ZYTE_RECORDER_INJECTED__) {
+        delete window.__ZYTE_RECORDER_INJECTED__;
+    }
+    
+    // Mark listeners as inactive (they'll be cleaned up by browser)
+    listenerState.areListenersActive = false;
+    isRecording = false;
+});
+
+// Enhanced page load completion handler with recovery state reset
+// Enhanced page load completion handler with recovery state reset
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+        resetRecoveryState(); // Reset on new page load
+        freezeDetectionCount = 0; // Reset freeze detection
+        lastVisibilityChange = 0; // Reset visibility throttling
+        
+        setTimeout(() => {
+            syncRecordingState();
+        }, 500); // Increased delay for stability
+    });
+} else {
+    // Document already loaded
+    resetRecoveryState(); // Reset on script injection
+    freezeDetectionCount = 0; // Reset freeze detection
+    lastVisibilityChange = 0; // Reset visibility throttling
+    
+    setTimeout(() => {
+        syncRecordingState();
+    }, 300); // Increased delay
+}
+
+// Enhanced BFCache (Back/Forward Cache) support
+// Enhanced BFCache (Back/Forward Cache) support with throttling
+let pageShowTimeout = null;
+
+window.addEventListener('pageshow', (event) => {
+    if (debugMode) {
+        console.log('📄 Page show event:', {
+            persisted: event.persisted,
+            isRecording: isRecording,
+            areListenersActive: listenerState.areListenersActive
+        });
+    }
+    
+    // Clear any pending pageshow recovery
+    if (pageShowTimeout) {
+        clearTimeout(pageShowTimeout);
+    }
+    
+    // If page was restored from BFCache, reset recovery state and try to recover (throttled)
+    if (event.persisted) {
+        resetRecoveryState();
+        freezeDetectionCount = 0; // Reset freeze detection on BFCache restore
+        
+        pageShowTimeout = setTimeout(() => {
+            // Only recover if listeners are actually missing
+            if (!listenerState.areListenersActive && !recoveryState.isRecovering) {
+                recoverRecordingState();
+            }
+        }, 1000); // Throttled recovery
+    }
+});
+
+window.addEventListener('pagehide', (event) => {
+    if (debugMode) {
+        console.log('📄 Page hide event:', {
+            persisted: event.persisted,
+            isRecording: isRecording
+        });
+    }
+    
+    // Clear any pending recovery timeouts
+    if (pageShowTimeout) {
+        clearTimeout(pageShowTimeout);
+        pageShowTimeout = null;
+    }
+    
+    if (visibilityChangeTimeout) {
+        clearTimeout(visibilityChangeTimeout);
+        visibilityChangeTimeout = null;
+    }
+    
+    // Don't reset state if page might be cached
+    if (!event.persisted) {
+        resetRecoveryState();
+        freezeDetectionCount = 0;
+    }
 });

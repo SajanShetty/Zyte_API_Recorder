@@ -30,6 +30,23 @@ document.addEventListener('DOMContentLoaded', () => {
         originalUrl: '',
         userManuallySetIframes: false
     };
+    let connectionState = {
+        status: 'disconnected', // 'connected', 'disconnected', 'reconnecting'
+        autoRetryCount: 0,
+        maxAutoRetries: 3,
+        manualRetryCount: 0,
+        retryInterval: null,
+        isManualRetry: false
+    };
+
+    let reconnectionState = {
+        isReconnecting: false,
+        attemptCount: 0,
+        maxAttempts: 6,
+        interval: null,
+        showingReconnectButton: false
+    };
+
     let settings = {};
 
     // Auto-scroll configuration
@@ -154,6 +171,276 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+
+    // Reconnection management functions
+    function startReconnectionAttempts() {
+        if (reconnectionState.isReconnecting) return;
+        
+        console.log('🔄 Starting reconnection attempts...');
+        reconnectionState.isReconnecting = true;
+        reconnectionState.attemptCount = 0;
+        
+        reconnectionState.interval = setInterval(() => {
+            reconnectionState.attemptCount++;
+            console.log(`🔄 Reconnection attempt ${reconnectionState.attemptCount}/${reconnectionState.maxAttempts}`);
+            
+            // Try to reconnect
+            connectToBackground();
+            
+            // Check if reconnection was successful
+            setTimeout(() => {
+                if (port && port.postMessage) {
+                    console.log('✅ Reconnection successful');
+                    stopReconnectionAttempts();
+                    hideReconnectButton();
+                    return;
+                }
+                
+                // If max attempts reached, show manual reconnect button
+                if (reconnectionState.attemptCount >= reconnectionState.maxAttempts) {
+                    console.log('❌ Auto-reconnection failed, showing manual button');
+                    stopReconnectionAttempts();
+                    showReconnectButton();
+                }
+            }, 500);
+            
+        }, 2000); // Every 2 seconds
+    }
+
+    function stopReconnectionAttempts() {
+        if (reconnectionState.interval) {
+            clearInterval(reconnectionState.interval);
+            reconnectionState.interval = null;
+        }
+        reconnectionState.isReconnecting = false;
+        reconnectionState.attemptCount = 0;
+    }
+
+    function showReconnectButton() {
+        if (reconnectionState.showingReconnectButton) return;
+        
+        reconnectionState.showingReconnectButton = true;
+        
+        // Hide start/stop buttons
+        startBtn.style.display = 'none';
+        stopBtn.style.display = 'none';
+        
+        // Create reconnect button
+        const reconnectBtn = document.createElement('button');
+        reconnectBtn.id = 'reconnect-btn';
+        reconnectBtn.className = 'btn btn-primary';
+        reconnectBtn.innerHTML = '<span class="btn-icon">🔄</span> Reconnect Recording';
+        reconnectBtn.title = 'Click to reconnect recording session';
+        
+        reconnectBtn.addEventListener('click', () => {
+            console.log('🔄 Manual reconnection triggered');
+            startConnectionRetry(true); // Manual retry
+        });
+        
+        // Insert after the stop button
+        stopBtn.parentNode.insertBefore(reconnectBtn, stopBtn.nextSibling);
+    }
+
+    function hideReconnectButton() {
+        const reconnectBtn = document.getElementById('reconnect-btn');
+        if (reconnectBtn) {
+            reconnectBtn.remove();
+        }
+        
+        // Show original buttons
+        startBtn.style.display = '';
+        stopBtn.style.display = '';
+        
+        reconnectionState.showingReconnectButton = false;
+    }
+
+    // Connection status management
+    function updateConnectionStatus(status) {
+        connectionState.status = status;
+        
+        const statusElement = document.getElementById('connection-status');
+        const statusIcon = document.getElementById('connection-status-icon');
+        
+        if (!statusElement || !statusIcon) return;
+        
+        // Remove all status classes
+        statusElement.classList.remove('connection-status-connected', 'connection-status-disconnected', 'connection-status-reconnecting');
+        
+        switch (status) {
+            case 'connected':
+                statusElement.classList.add('connection-status-connected');
+                statusIcon.textContent = '🟢';
+                statusIcon.title = 'Connected';
+                break;
+            case 'disconnected':
+                statusElement.classList.add('connection-status-disconnected');
+                statusIcon.textContent = '🔴';
+                statusIcon.title = 'Disconnected';
+                break;
+            case 'reconnecting':
+                statusElement.classList.add('connection-status-reconnecting');
+                statusIcon.textContent = '🟡';
+                statusIcon.title = 'Reconnecting...';
+                break;
+        }
+    }
+
+    function startConnectionRetry(isManual = false) {
+        connectionState.isManualRetry = isManual;
+        
+        if (isManual) {
+            connectionState.manualRetryCount = 0;
+            updateReconnectButtonText();
+        } else {
+            connectionState.autoRetryCount = 0;
+        }
+        
+        updateConnectionStatus('reconnecting');
+        attemptConnection();
+    }
+
+    function attemptConnection() {
+        const currentRetryCount = connectionState.isManualRetry ? 
+            connectionState.manualRetryCount : connectionState.autoRetryCount;
+        const maxRetries = connectionState.maxAutoRetries;
+        
+        if (currentRetryCount >= maxRetries) {
+            // Max retries reached
+            updateConnectionStatus('disconnected');
+            
+            if (!connectionState.isManualRetry) {
+                // Auto-retry failed, show manual reconnect button
+                showReconnectButton();
+            } else {
+                // Manual retry failed, reset button
+                resetReconnectButton();
+            }
+            return;
+        }
+        
+        // Increment retry count
+        if (connectionState.isManualRetry) {
+            connectionState.manualRetryCount++;
+            updateReconnectButtonText();
+        } else {
+            connectionState.autoRetryCount++;
+        }
+        
+        console.log(`🔄 Connection attempt ${currentRetryCount + 1}/${maxRetries} (${connectionState.isManualRetry ? 'manual' : 'auto'})`);
+        
+        // Try to connect with 2-second timeout
+        const connectionTimeout = setTimeout(() => {
+            console.log('⏰ Connection attempt timed out');
+            
+            // Schedule next attempt after 2 seconds
+            setTimeout(() => {
+                attemptConnection();
+            }, 2000);
+        }, 2000);
+        
+        try {
+            connectToBackground();
+            
+            // Test if connection works by sending a test message
+            setTimeout(() => {
+                if (port && port.postMessage) {
+                    try {
+                        // If we can send a message, connection is successful
+                        clearTimeout(connectionTimeout);
+                        connectionSuccessful();
+                    } catch (error) {
+                        console.log('❌ Connection test failed:', error);
+                        // Let the timeout handle the retry
+                    }
+                } else {
+                    console.log('❌ Port not available after connection attempt');
+                    // Let the timeout handle the retry
+                }
+            }, 100);
+            
+        } catch (error) {
+            console.log('❌ Connection attempt failed:', error);
+            clearTimeout(connectionTimeout);
+            
+            // Schedule next attempt after 2 seconds
+            setTimeout(() => {
+                attemptConnection();
+            }, 2000);
+        }
+    }
+
+    function connectionSuccessful() {
+        console.log('✅ Connection successful');
+        
+        // Clear retry state
+        connectionState.autoRetryCount = 0;
+        connectionState.manualRetryCount = 0;
+        connectionState.isManualRetry = false;
+        
+        // Update UI
+        updateConnectionStatus('connected');
+        hideReconnectButton();
+        
+        // Clear any existing retry intervals
+        if (connectionState.retryInterval) {
+            clearInterval(connectionState.retryInterval);
+            connectionState.retryInterval = null;
+        }
+    }
+
+    function updateReconnectButtonText() {
+        const reconnectBtn = document.getElementById('reconnect-btn');
+        if (reconnectBtn && connectionState.isManualRetry) {
+            const current = connectionState.manualRetryCount;
+            const max = connectionState.maxAutoRetries;
+            reconnectBtn.innerHTML = `<span class="btn-icon">🔄</span> Reconnecting... (${current}/${max})`;
+            reconnectBtn.disabled = true;
+        }
+    }
+
+    function resetReconnectButton() {
+        const reconnectBtn = document.getElementById('reconnect-btn');
+        if (reconnectBtn) {
+            reconnectBtn.innerHTML = '<span class="btn-icon">🔄</span> Reconnect Recording';
+            reconnectBtn.disabled = false;
+        }
+    }
+
+
+
+
+    function showToast(message, type = 'success', duration = 3000) {
+        // Remove existing toast if any
+        const existingToast = document.getElementById('panel-toast');
+        if (existingToast) {
+            existingToast.remove();
+        }
+        
+        const toast = document.createElement('div');
+        toast.id = 'panel-toast';
+        toast.className = `toast toast-${type}`;
+        toast.textContent = message;
+        
+        // Add to container
+        const container = document.querySelector('.container');
+        container.appendChild(toast);
+        
+        // Animate in
+        setTimeout(() => {
+            toast.classList.add('toast-show');
+        }, 100);
+        
+        // Animate out and remove
+        setTimeout(() => {
+            toast.classList.remove('toast-show');
+            setTimeout(() => {
+                if (toast.parentNode) {
+                    toast.parentNode.removeChild(toast);
+                }
+            }, 300);
+        }, duration);
+    }
+
     // --- Initial Setup ---
     chrome.devtools.inspectedWindow.eval('window.location.href', (result, isException) => {
         if (!isException && result) initialUrl = result;
@@ -162,35 +449,89 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // --- Communication with Background Script ---
+
+    // Enhanced connection with status tracking
+    // Navigation-resistant port connection (CORRECTED)
     function connectToBackground() {
-        if (port) port.disconnect();
-        port = chrome.runtime.connect({ name: 'devtools' });
-        port.onMessage.addListener((message) => {
-            if (chrome.runtime.lastError) {
-                console.error("DevTools context error:", chrome.runtime.lastError.message);
-                if (port) { port.disconnect(); port = null; }
-                return;
+        if (port) {
+            try {
+                port.disconnect();
+            } catch (e) {
+                // Ignore errors during cleanup
             }
-            
-            if (message.type === 'new_action') {
-                console.log('=== Adding new action ===', message.action);
-                recordedActions.push(message.action);
-                renderUI();
-                updateButtonStates(); // ← NEW: Update button state when action is actually added
-                console.log('Action added. recordedActions.length now:', recordedActions.length);
-            } else if (message.type === 'iframe_interaction_detected') {
-                handleIframeInteractionDetected();
-            }
-        });
+        }
         
-        port.onDisconnect.addListener(() => { 
-            port = null; 
-            updateButtonStates();
-            // Attempt reconnection if we were recording
-            if (isRecording) {
-                setTimeout(connectToBackground, 1000);
-            }
-        });
+        try {
+            port = chrome.runtime.connect({ name: 'devtools' });
+            
+            port.onMessage.addListener((message) => {
+                if (chrome.runtime.lastError) {
+                    console.error("DevTools context error:", chrome.runtime.lastError.message);
+                    updateConnectionStatus('disconnected');
+                    handlePortDisconnection();
+                    return;
+                }
+                
+                if (message.type === 'new_action') {
+                    console.log('=== Adding new action ===', message.action);
+                    recordedActions.push(message.action);
+                    renderUI();
+                    updateButtonStates();
+                    console.log('Action added. recordedActions.length now:', recordedActions.length);
+                    
+                    // Ensure connection status is correct when receiving messages
+                    if (connectionState.status !== 'connected') {
+                        connectionSuccessful();
+                        // Show toast when we receive first action after reconnection
+                        showToast('🔄 Recording Resumed', 'success', 3000);
+                    }
+                    
+                } else if (message.type === 'iframe_interaction_detected') {
+                    handleIframeInteractionDetected();
+                } else if (message.type === 'connection_confirmed') {
+                    // Background confirmed our connection
+                    console.log('📱 Panel connection confirmed for tab:', chrome.devtools.inspectedWindow.tabId);
+                    connectionSuccessful();
+                }
+            });
+            
+            port.onDisconnect.addListener(() => { 
+                console.log('🔌 Port disconnected');
+                handlePortDisconnection();
+            });
+            
+            console.log('✅ Port connection created');
+            
+            // FIXED: Send panel connection message after setting up listeners
+            setTimeout(() => {
+                if (port) {
+                    port.postMessage({
+                        type: 'panel_connected',
+                        tabId: chrome.devtools.inspectedWindow.tabId
+                    });
+                    console.log('📱 Sent panel_connected message for tab:', chrome.devtools.inspectedWindow.tabId);
+                }
+            }, 100);
+            
+        } catch (error) {
+            console.error('❌ Failed to create port connection:', error);
+            updateConnectionStatus('disconnected');
+            handlePortDisconnection();
+        }
+    } 
+
+    function handlePortDisconnection() {
+        updateConnectionStatus('disconnected');
+        port = null; 
+        updateButtonStates();
+        
+        // Start auto-retry if recording and not already reconnecting
+        if (isRecording && connectionState.status !== 'reconnecting') {
+            console.log('🔄 Recording active, starting connection retry...');
+            setTimeout(() => {
+                startConnectionRetry(false);
+            }, 500); // Reduced delay for faster reconnection
+        }
     }
 
 
@@ -2111,6 +2452,20 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
         console.log('recordedActions.length:', recordedActions.length);
         console.log('hasActions:', hasActions);
         console.log('replayState.currentActionIndex:', replayState.currentActionIndex);
+        console.log('reconnectionState.showingReconnectButton:', reconnectionState.showingReconnectButton);
+        
+        // Don't update buttons if showing reconnect button
+        if (reconnectionState.showingReconnectButton) {
+            clearBtn.disabled = isReplaying;
+            replayBtn.disabled = isRecording || !hasActions;
+            
+            // Disable manual action buttons during reconnection
+            const manualButtons = [hoverBtn, hideBtn, scrollToBtn, waitForElementBtn, waitTimeoutBtn];
+            manualButtons.forEach(btn => {
+                if (btn) btn.disabled = true;
+            });
+            return;
+        }
         
         startBtn.disabled = isRecording || isReplaying;
         stopBtn.disabled = !isRecording;
@@ -2152,6 +2507,10 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
     startBtn.addEventListener('click', () => {
         console.log('=== Start button clicked ===');
         
+        // Reset reconnection state
+        stopReconnectionAttempts();
+        hideReconnectButton();
+        
         // Reset replay state if there was a previous replay (same as Clear button)
         if (document.querySelector('.action-status-header')) {
             console.log('Resetting previous replay state...');
@@ -2161,7 +2520,7 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
             recordedActions.forEach(action => {
                 delete action.replayStatus;
                 delete action.replayErrorMsg;
-                // NEW: Clear conversion metadata on new recording
+                // Clear conversion metadata on new recording
                 delete action._originalClicks;
             });
         }
@@ -2221,22 +2580,25 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
 
 
     clearBtn.addEventListener('click', () => {
-        // Enhanced Clear: current clear functionality + reset functionality (minus navigation)
+        // Clear recorded actions list only - keep recording active
         recordedActions = [];
         expandedActionIndex = null;
         
-        // Reset iframe state
+        // Reset iframe state for new actions
         replayState.userManuallySetIframes = false;
         includeIframesCheckbox.checked = false;
         updateIframeTooltip('default');
         
-        // Reset replay state (without navigation)
+        // Reset replay state (without affecting recording state)
         if (document.querySelector('.action-status-header')) {
             removeStatusColumn();
         }
         clearActionHighlights();
         isReplaying = false;
         replayState.currentActionIndex = 0;
+        
+        // DO NOT reset reconnection state or recording state
+        // Recording continues after clearing actions
         
         renderUI();
     });
@@ -2568,4 +2930,13 @@ function generateActionExecutionCode(action, actionIndex = -1, allActions = []) 
         
         draggedItemIndex = null;
         });
+
+    // Initialize connection status
+    updateConnectionStatus('disconnected');
+
+    // Info button click handler
+    document.getElementById('info-btn').addEventListener('click', () => {
+        chrome.tabs.create({ url: 'https://docs.zyte.com/' });
     });
+
+});

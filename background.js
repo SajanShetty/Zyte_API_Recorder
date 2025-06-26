@@ -89,16 +89,358 @@ const DEFAULT_SETTINGS = {
 };
 
 
+// Session storage helper functions
+async function saveRecordingState(tabId, state, isNewRecording = false) {
+    try {
+        if (isNewRecording) {
+            // Clean up previous sessions from this tab and closed tabs
+            await cleanupSessionsForNewRecording(tabId);
+        }
+        
+        const timestamp = Date.now();
+        const key = `zyte_recorder_session_${tabId}`;
+        
+        const sessionData = {
+            ...state,
+            tabId,
+            startTime: state.startTime || timestamp,
+            lastActivity: timestamp
+        };
+        
+        await chrome.storage.session.set({ [key]: sessionData });
+        console.log(`📦 Saved recording state for tab ${tabId}: ${key}`);
+        
+    } catch (error) {
+        console.error('Failed to save recording state:', error);
+    }
+}
+
+async function updateRecordingActivity(tabId) {
+    try {
+        const key = `zyte_recorder_session_${tabId}`;
+        const result = await chrome.storage.session.get([key]);
+        
+        if (result[key]) {
+            const updatedData = {
+                ...result[key],
+                lastActivity: Date.now()
+            };
+            
+            await chrome.storage.session.set({ [key]: updatedData });
+            console.log(`📦 Updated activity for tab ${tabId}`);
+        }
+    } catch (error) {
+        console.error('Failed to update recording activity:', error);
+    }
+}
+
+async function getRecordingState(tabId) {
+    try {
+        const key = `zyte_recorder_session_${tabId}`;
+        const result = await chrome.storage.session.get([key]);
+        
+        if (result[key]) {
+            console.log(`📦 Retrieved recording state for tab ${tabId}: ${key}`);
+            return result[key];
+        }
+        
+        return null;
+    } catch (error) {
+        console.error('Failed to get recording state:', error);
+        return null;
+    }
+}
+
+async function getAllSessions() {
+    try {
+        const result = await chrome.storage.session.get();
+        const sessions = new Map();
+        
+        Object.keys(result).forEach(key => {
+            if (key.startsWith('zyte_recorder_session_')) {
+                sessions.set(key, result[key]);
+            }
+        });
+        
+        return sessions;
+    } catch (error) {
+        console.error('Failed to get all sessions:', error);
+        return new Map();
+    }
+}
+
+    // Enhanced port connection tracking for navigation resistance
+    let panelConnections = new Map(); // tabId -> { port, lastSeen }
+
+    function registerPanelConnection(tabId, port) {
+        // Clean up any existing connection for this tab
+        if (panelConnections.has(tabId)) {
+            const existing = panelConnections.get(tabId);
+            try {
+                if (existing.port && existing.port !== port) {
+                    existing.port.disconnect();
+                }
+            } catch (e) {
+                // Ignore cleanup errors
+            }
+        }
+        
+        panelConnections.set(tabId, {
+            port: port,
+            lastSeen: Date.now(),
+            connected: true
+        });
+        
+        console.log(`📱 Panel connected for tab ${tabId}`);
+        
+        // Send confirmation back to panel
+        try {
+            port.postMessage({ type: 'connection_confirmed', tabId: tabId });
+        } catch (error) {
+            console.warn('Failed to confirm connection:', error);
+        }
+    }
+
+    function getPanelConnection(tabId) {
+        const connection = panelConnections.get(tabId);
+        if (connection && connection.connected) {
+            // Update last seen
+            connection.lastSeen = Date.now();
+            return connection.port;
+        }
+        return null;
+    }
+
+    function cleanupPanelConnection(tabId, port) {
+        const connection = panelConnections.get(tabId);
+        if (connection && connection.port === port) {
+            connection.connected = false;
+            panelConnections.delete(tabId);
+            console.log(`📱 Panel disconnected for tab ${tabId}`);
+        }
+    }
+
+    // Periodic cleanup of stale panel connections
+    // setInterval(() => {
+    //     const now = Date.now();
+    //     const staleTimeout = 30000; // 30 seconds
+        
+    //     for (const [tabId, connection] of panelConnections.entries()) {
+    //         if (now - connection.lastSeen > staleTimeout) {
+    //             console.log(`📱 Cleaning up stale panel connection for tab ${tabId}`);
+    //             panelConnections.delete(tabId);
+    //         }
+    //     }
+    // }, 60000); // Check every minute
+
+
+
+async function cleanupSessionsForNewRecording(currentTabId) {
+    try {
+        console.log('🧹 Starting cleanup for new recording in tab:', currentTabId);
+        
+        // Get all sessions
+        const sessions = await getAllSessions();
+        
+        if (sessions.size === 0) {
+            console.log('🧹 No sessions to cleanup');
+            return;
+        }
+        
+        // Get open tabs
+        const openTabs = await chrome.tabs.query({});
+        const openTabIds = openTabs.map(tab => tab.id.toString());
+        
+        const keysToDelete = [];
+        
+        for (const [key, sessionData] of sessions) {
+            const sessionTabId = sessionData?.tabId?.toString();
+            
+            // Delete sessions from current tab (previous recordings)
+            if (sessionTabId === currentTabId.toString()) {
+                keysToDelete.push(key);
+                console.log(`🧹 Marking for cleanup: previous session from current tab ${sessionTabId}`);
+                continue;
+            }
+            
+            // Delete sessions from closed tabs
+            if (sessionTabId && !openTabIds.includes(sessionTabId)) {
+                keysToDelete.push(key);
+                console.log(`🧹 Marking for cleanup: session from closed tab ${sessionTabId}`);
+                continue;
+            }
+        }
+        
+        if (keysToDelete.length > 0) {
+            await chrome.storage.session.remove(keysToDelete);
+            console.log(`🧹 Cleaned up ${keysToDelete.length} sessions:`, keysToDelete);
+        } else {
+            console.log('🧹 No sessions needed cleanup');
+        }
+        
+    } catch (error) {
+        console.error('Session cleanup failed:', error);
+        // Retry once silently
+        setTimeout(() => {
+            cleanupSessionsForNewRecording(currentTabId).catch(() => {
+                console.warn('Session cleanup retry failed - some old sessions may remain');
+            });
+        }, 1000);
+    }
+}
+
+async function cleanupClosedTabSessions() {
+    try {
+        console.log('🧹 Starting cleanup of closed tab sessions');
+        
+        // Get all sessions and open tabs
+        const sessions = await getAllSessions();
+        const openTabs = await chrome.tabs.query({});
+        const openTabIds = openTabs.map(tab => tab.id.toString());
+        
+        const keysToDelete = [];
+        
+        for (const [key, sessionData] of sessions) {
+            const sessionTabId = sessionData?.tabId?.toString();
+            
+            // Only delete sessions from closed tabs, keep active recordings
+            if (sessionTabId && !openTabIds.includes(sessionTabId)) {
+                keysToDelete.push(key);
+            }
+        }
+        
+        if (keysToDelete.length > 0) {
+            await chrome.storage.session.remove(keysToDelete);
+            console.log(`🧹 Cleaned up ${keysToDelete.length} closed tab sessions`);
+        }
+        
+    } catch (error) {
+        console.error('Closed tab session cleanup failed:', error);
+    }
+}
+
+async function cleanupOldSessions() {
+    try {
+        console.log('🧹 Starting cleanup of old stopped sessions');
+        
+        const sessions = await getAllSessions();
+        const keysToDelete = [];
+        const oneHourAgo = Date.now() - (60 * 60 * 1000); // 1 hour
+        
+        for (const [key, sessionData] of sessions) {
+            // Only cleanup stopped sessions older than 1 hour
+            if (!sessionData.isRecording && sessionData.lastActivity < oneHourAgo) {
+                keysToDelete.push(key);
+            }
+        }
+        
+        if (keysToDelete.length > 0) {
+            await chrome.storage.session.remove(keysToDelete);
+            console.log(`🧹 Cleaned up ${keysToDelete.length} old stopped sessions`);
+        }
+        
+    } catch (error) {
+        console.error('Old session cleanup failed:', error);
+    }
+}
+
+async function deleteSessionForTab(tabId) {
+    try {
+        const key = `zyte_recorder_session_${tabId}`;
+        await chrome.storage.session.remove([key]);
+        console.log(`🧹 Deleted session for tab ${tabId}: ${key}`);
+    } catch (error) {
+        console.error('Failed to delete session for tab:', error);
+    }
+}
+
+async function cleanupSessionStorage(options = {}) {
+    const { 
+        cleanupStopped = true, 
+        cleanupClosedTabs = true, 
+        cleanupAll = false,
+        currentTabId = null 
+    } = options;
+    
+    try {
+        console.log('🧹 Starting session storage cleanup:', options);
+        
+        const result = await chrome.storage.session.get();
+        const sessionKeys = Object.keys(result).filter(key => 
+            key.startsWith('zyte_recorder_session_')
+        );
+        
+        if (sessionKeys.length === 0) {
+            console.log('🧹 No sessions to cleanup');
+            return;
+        }
+        
+        // Get all open tabs
+        let openTabIds = [];
+        if (cleanupClosedTabs) {
+            try {
+                const tabs = await chrome.tabs.query({});
+                openTabIds = tabs.map(tab => tab.id.toString());
+            } catch (error) {
+                console.warn('Could not query tabs for cleanup:', error);
+            }
+        }
+        
+        const keysToDelete = [];
+        
+        for (const key of sessionKeys) {
+            const sessionData = result[key];
+            const tabId = sessionData?.tabId?.toString();
+            
+            // Cleanup all sessions (for start recording)
+            if (cleanupAll) {
+                keysToDelete.push(key);
+                continue;
+            }
+            
+            // Cleanup stopped sessions
+            if (cleanupStopped && !sessionData?.isRecording) {
+                const age = Date.now() - sessionData.timestamp;
+                if (age > 5 * 60 * 1000) { // 5 minutes
+                    keysToDelete.push(key);
+                    continue;
+                }
+            }
+            
+            // Cleanup sessions from closed tabs
+            if (cleanupClosedTabs && tabId && !openTabIds.includes(tabId)) {
+                keysToDelete.push(key);
+                continue;
+            }
+        }
+        
+        if (keysToDelete.length > 0) {
+            await chrome.storage.session.remove(keysToDelete);
+            console.log(`🧹 Cleaned up ${keysToDelete.length} sessions:`, keysToDelete);
+        } else {
+            console.log('🧹 No sessions needed cleanup');
+        }
+        
+    } catch (error) {
+        console.error('Session storage cleanup failed:', error);
+        // Retry once silently
+        setTimeout(() => {
+            cleanupSessionStorage(options).catch(() => {
+                console.warn('Session storage cleanup retry failed - this may cause storage accumulation');
+            });
+        }, 1000);
+    }
+}
+
 // Initialize settings on extension startup
 chrome.runtime.onStartup.addListener(() => {
     initializeSettings();
 });
 
-chrome.runtime.onInstalled.addListener(() => {
-    initializeSettings();
-});
-
 function initializeSettings() {
+    // Cleanup old sessions on startup
+    cleanupOldSessions();
+    
     chrome.storage.local.get(['extensionSettings'], (result) => {
         if (!result.extensionSettings) {
             chrome.storage.local.set({
@@ -274,22 +616,52 @@ chrome.runtime.onConnect.addListener((port) => {
     if (port.name !== 'devtools') return;
     let tabId;
     
-    port.onMessage.addListener((message) => {
+    port.onMessage.addListener(async (message) => {
+        // Handle panel connection registration
+        if (message.type === 'panel_connected') {
+            tabId = message.tabId;
+            registerPanelConnection(tabId, port);
+            
+            // Initialize or restore recording state
+            if (!recordingStates[tabId]) {
+                const savedState = await getRecordingState(tabId);
+                recordingStates[tabId] = { 
+                    isRecording: savedState?.isRecording || false, 
+                    port: port 
+                };
+                
+                if (savedState?.isRecording) {
+                    console.log(`📦 Restored recording state for tab ${tabId}`);
+                }
+            } else {
+                recordingStates[tabId].port = port;
+                delete reconnectionAttempts[tabId];
+            }
+            return;
+        }
+        
         if (!message.tabId) return;
         tabId = message.tabId;
 
-        if (!recordingStates[tabId]) {
-            recordingStates[tabId] = { isRecording: false, port: port };
-        } else {
-            // Update the port reference in case of reconnection
+        // Ensure we have the current port reference
+        if (recordingStates[tabId]) {
             recordingStates[tabId].port = port;
-            // Reset reconnection attempts on successful connection
-            delete reconnectionAttempts[tabId];
         }
 
         switch (message.type) {
             case 'start_recording':
+                await deleteSessionForTab(tabId);
+                await cleanupSessionsForNewRecording(tabId);
+                
+                recordingStates[tabId] = recordingStates[tabId] || {};
                 recordingStates[tabId].isRecording = true;
+                recordingStates[tabId].port = port;
+                
+                await saveRecordingState(tabId, { 
+                    isRecording: true,
+                    url: message.url || 'unknown' 
+                }, true);
+                
                 chrome.tabs.sendMessage(tabId, { type: 'start_recording' }, (response) => {
                     if (chrome.runtime.lastError) {
                         console.warn('Could not notify content script of recording start:', chrome.runtime.lastError.message);
@@ -301,12 +673,10 @@ chrome.runtime.onConnect.addListener((port) => {
 
             case 'stop_recording':
                 if (recordingStates[tabId]) {
-                    // Tell the content script to flush any pending actions before stopping
-                    chrome.tabs.sendMessage(tabId, { type: 'flush_buffer' }, (response) => {
-                        // After flush is complete, stop recording and notify content script
+                    chrome.tabs.sendMessage(tabId, { type: 'flush_buffer' }, async (response) => {
                         recordingStates[tabId].isRecording = false;
+                        await deleteSessionForTab(tabId);
                         
-                        // NEW: Notify content script to stop listeners
                         chrome.tabs.sendMessage(tabId, { type: 'stop_recording' }, (stopResponse) => {
                             if (chrome.runtime.lastError) {
                                 console.warn('Could not notify content script of recording stop:', chrome.runtime.lastError.message);
@@ -317,36 +687,32 @@ chrome.runtime.onConnect.addListener((port) => {
                     });
                 }
                 break;
+                
+            // Keep all other existing cases unchanged
             case 'start_picker_mode':
                 chrome.tabs.sendMessage(tabId, { 
                     type: 'start_element_picker', 
                     action: message.action 
-                }).catch(() => {
-                    // Ignore errors if tab is not available
-                });
+                }).catch(() => {});
                 break;
+                
             case 'record_scroll_to':
                 console.log('Sending get_scroll_position message to tab:', tabId);
-                // Use chrome.scripting.executeScript to run in main frame only
                 chrome.scripting.executeScript({
-                    target: { tabId: tabId, allFrames: false }, // Only main frame
+                    target: { tabId: tabId, allFrames: false },
                     func: () => {
-                        // Try multiple methods to get scroll position
                         let x = 0, y = 0;
                         
-                        // Method 1: window scroll
                         if (window.scrollX !== undefined && window.scrollY !== undefined) {
                             x = window.scrollX;
                             y = window.scrollY;
                         }
                         
-                        // Method 2: document.documentElement scroll (most common)
                         if (x === 0 && y === 0) {
                             x = document.documentElement.scrollLeft || 0;
                             y = document.documentElement.scrollTop || 0;
                         }
                         
-                        // Method 3: document.body scroll (fallback)
                         if (x === 0 && y === 0 && document.body) {
                             x = document.body.scrollLeft || 0;
                             y = document.body.scrollTop || 0;
@@ -369,12 +735,20 @@ chrome.runtime.onConnect.addListener((port) => {
                             left: Math.round(x),
                             onError: 'return'
                         };
-                        port.postMessage({ type: 'new_action', action: scrollToAction });
-                    } else {
-                        console.error('Invalid scroll position response:', results);
+                        
+                        // Use the enhanced panel connection
+                        const panelPort = getPanelConnection(tabId);
+                        if (panelPort) {
+                            try {
+                                panelPort.postMessage({ type: 'new_action', action: scrollToAction });
+                            } catch (error) {
+                                console.warn('Failed to send scroll action to panel:', error);
+                            }
+                        }
                     }
                 });
                 break;
+
             case 'get_settings':
                 // New case to provide settings to content script if needed
                 chrome.storage.local.get(['extensionSettings'], (result) => {
@@ -410,20 +784,21 @@ chrome.runtime.onConnect.addListener((port) => {
     });
 
     port.onDisconnect.addListener(() => {
-        if (tabId && recordingStates[tabId]) {
-            // Don't delete the recording state immediately - prepare for potential reconnection
-            recordingStates[tabId].port = null;
+        if (tabId) {
+            cleanupPanelConnection(tabId, port);
             
-            // If we were recording, attempt reconnection
-            if (recordingStates[tabId].isRecording) {
-                attemptReconnection(tabId, 'devtools');
-            } else {
-                // If not recording, clean up after a short delay
-                setTimeout(() => {
-                    if (recordingStates[tabId] && !recordingStates[tabId].port) {
-                        delete recordingStates[tabId];
-                    }
-                }, 5000);
+            if (recordingStates[tabId]) {
+                recordingStates[tabId].port = null;
+                
+                if (recordingStates[tabId].isRecording) {
+                    attemptReconnection(tabId, 'devtools');
+                } else {
+                    setTimeout(() => {
+                        if (recordingStates[tabId] && !recordingStates[tabId].port) {
+                            delete recordingStates[tabId];
+                        }
+                    }, 5000);
+                }
             }
         }
     });
@@ -434,16 +809,40 @@ chrome.runtime.onConnect.addListener((port) => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (!sender.tab) return; // Ignore messages from other extension contexts
     const tabId = sender.tab.id;
-    const state = recordingStates[tabId];
+    let state = recordingStates[tabId];
     
     console.log('📨 RECEIVED MESSAGE:', message.type, 'from tab:', tabId, 'recording:', state?.isRecording);
     
-    // NEW: Handle recording state requests
+    // Handle recording state requests with session storage fallback
     if (message.type === 'get_recording_state') {
-        const isRecording = state?.isRecording || false;
+        let isRecording = state?.isRecording || false;
+        
+        // If no state in memory, try session storage
+        if (!state || state.isRecording === undefined) {
+            getRecordingState(tabId).then(savedState => {
+                const recording = savedState?.isRecording || false;
+                console.log(`Content script asking for recording state for tab ${tabId}: ${recording} (from session storage)`);
+                
+                // Restore state if found
+                if (savedState?.isRecording) {
+                    recordingStates[tabId] = { isRecording: true, port: null };
+                }
+                
+                sendResponse({ isRecording: recording });
+            }).catch(() => {
+                sendResponse({ isRecording: false });
+            });
+            return true; // Keep message channel open for async response
+        }
+        
         console.log(`Content script asking for recording state for tab ${tabId}: ${isRecording}`);
         sendResponse({ isRecording: isRecording });
-        return true; // Keep the message channel open for async response
+        return true;
+    }
+    
+    // Update activity when recording actions (use new updateRecordingActivity function)
+    if (message.type === 'recorded_action' && state?.isRecording) {
+        updateRecordingActivity(tabId).catch(console.error);
     }
     
     // Special handling for flush_complete messages - these should always be processed
@@ -456,12 +855,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     
     // Normal recording messages - only process when recording
-    if (state?.isRecording && state.port) {
+    if (state?.isRecording) {
         if (message.type === 'recorded_action' || message.type === 'element_picked') {
-            state.port.postMessage({ type: 'new_action', action: message.action });
+            // Try to send to panel using enhanced connection
+            const panelPort = getPanelConnection(tabId);
+            if (panelPort) {
+                try {
+                    panelPort.postMessage({ type: 'new_action', action: message.action });
+                } catch (error) {
+                    console.warn('Failed to send action to panel:', error);
+                    // Clean up broken connection
+                    cleanupPanelConnection(tabId, panelPort);
+                }
+            } else {
+                console.warn('No panel connection available for tab:', tabId);
+            }
         }
     }
-    
+
     // Always return true to keep the message channel open
     return true;
 });
@@ -547,12 +958,16 @@ chrome.webNavigation.onCommitted.addListener((details) => {
 });
 
 // Tab close cleanup
+// Enhanced tab close cleanup with session storage
 chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
     if (recordingStates[tabId]) {
         console.log(`Cleaning up recording state for closed tab ${tabId}`);
         delete recordingStates[tabId];
         delete reconnectionAttempts[tabId];
     }
+    
+    // Clean up session storage for closed tab
+    deleteSessionForTab(tabId).catch(console.error);
 });
 
 // Tab update cleanup for navigation away from recorded sites
@@ -566,6 +981,12 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         }
     }
 });
+
+// Clean up disconnected ports periodically (reduced frequency)
+// Periodic cleanup of closed tab sessions (every 5 minutes)
+setInterval(() => {
+    cleanupClosedTabSessions().catch(console.error);
+}, 5 * 60 * 1000); // 5 minutes
 
 // Clean up disconnected ports periodically (reduced frequency)
 setInterval(() => {
