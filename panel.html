@@ -7,6 +7,7 @@
 </head>
 <body>
   <div class="container">
+  <div id="toast-container"></div>
     <!-- Modern Toolbar -->
     <div class="toolbar">
       <div class="toolbar-group primary-controls">
@@ -49,6 +50,14 @@
             <span class="checkmark"></span>
             Include Iframes
           </label>
+        </div>
+        <div class="status-info-group">
+          <div id="connection-status" class="connection-status connection-status-disconnected">
+            <span id="connection-status-icon" class="connection-status-icon" title="Disconnected">🔴</span>
+          </div>
+          <button id="info-btn" class="info-btn" title="Open Zyte Documentation">
+            <span class="btn-icon">📘</span>
+          </button>
         </div>
       </div>
     </div>
